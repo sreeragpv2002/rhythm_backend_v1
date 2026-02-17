@@ -1,0 +1,103 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-02-17 22:45+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+
+msgid "Invalid credentials"
+msgstr "بيانات الاعتماد غير صالحة"
+
+msgid "Token has expired"
+msgstr "انتهت صلاحية الرمز"
+
+msgid "Email not verified"
+msgstr "البريد الإلكتروني غير مفعل"
+
+msgid "User account is inactive"
+msgstr "حساب المستخدم غير نشط"
+
+msgid "User registered successfully. Please verify your email."
+msgstr "تم تسجيل المستخدم بنجاح. يرجى تفعيل بريدك الإلكتروني."
+
+msgid "Login successful"
+msgstr "تم تسجيل الدخول بنجاح"
+
+msgid "Logout successful"
+msgstr "تم تسجيل الخروج بنجاح"
+
+msgid "This field is required"
+msgstr "هذا الحقل مطلوب"
+
+msgid "Invalid file format"
+msgstr "تنسيق ملف غير صالح"
+
+msgid "File size too large"
+msgstr "حجم الملف كبير جداً"
+
+msgid "Invalid email address"
+msgstr "عنوان بريد إلكتروني غير صالح"
+
+msgid "Passwords do not match"
+msgstr "كلمات المرور غير متطابقة"
+
+msgid "You do not have permission to perform this action"
+msgstr "ليس لديك الإذن للقيام بهذا الإجراء"
+
+msgid "Broadcaster verification required"
+msgstr "مطلوب التحقق من المذيع"
+
+msgid "Admin access required"
+msgstr "مطلوب صلاحية المسؤول"
+
+msgid "Music not found"
+msgstr "الموسيقى غير موجودة"
+
+msgid "Artist not found"
+msgstr "الفنان غير موجود"
+
+msgid "Album not found"
+msgstr "الألبوم غير موجود"
+
+msgid "Playlist not found"
+msgstr "قائمة التشغيل غير موجودة"
+
+msgid "User not found"
+msgstr "المستخدم غير موجود"
+
+msgid "Cannot delete playlist with tracks"
+msgstr "لا يمكن حذف قائمة تشغيل تحتوي على مقاطع"
+
+msgid "Upload limit exceeded"
+msgstr "تم تجاوز حد التحميل"
+
+msgid "Music already in favorites"
+msgstr "الموسيقى موجودة بالفعل في المفضلة"
+
+msgid "Music not in favorites"
+msgstr "الموسيقى ليست في المفضلة"
+
+msgid "Created successfully"
+msgstr "تم الإنشاء بنجاح"
+
+msgid "Updated successfully"
+msgstr "تم التحديث بنجاح"
+
+msgid "Deleted successfully"
+msgstr "تم الحذف بنجاح"
+
+msgid "Added successfully"
+msgstr "تمت الإضافة بنجاح"
+
+msgid "Removed successfully"
+msgstr "تمت الإزالة بنجاح"
+
+msgid "Music uploaded successfully"
+msgstr "تم تحميل الموسيقى بنجاح"
