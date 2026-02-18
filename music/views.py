@@ -123,7 +123,7 @@ class TagViewSet(viewsets.ModelViewSet):
 class MusicViewSet(viewsets.ModelViewSet):
     """ViewSet for Music management"""
     queryset = Music.objects.select_related('artist', 'album', 'uploaded_by').prefetch_related('tags').all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated()]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'artist__name', 'album__title']
     ordering_fields = ['title', 'play_count', 'created_at']
@@ -141,7 +141,9 @@ class MusicViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsVerifiedBroadcaster()]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAuthenticated(), IsBroadcasterOrAdmin()]
-        return [AllowAny()]
+        elif self.action in ['list', 'trending', 'discover', 'search']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
     
     def get_queryset(self):
         queryset = super().get_queryset()
