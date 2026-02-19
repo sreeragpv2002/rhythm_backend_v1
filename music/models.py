@@ -39,11 +39,11 @@ class Artist(models.Model):
 class Album(models.Model):
     """Album model for grouping music"""
     title = models.CharField(_('title'), max_length=200)
-    artist = models.ForeignKey(
+    artist = models.ManyToManyField(
         Artist,
-        on_delete=models.CASCADE,
         related_name='albums',
-        verbose_name=_('artist')
+        verbose_name=_('artists'),
+        blank=True
     )
     release_date = models.DateField(_('release date'), null=True, blank=True)
     cover_image = models.ImageField(
@@ -64,11 +64,12 @@ class Album(models.Model):
         verbose_name_plural = _('albums')
         ordering = ['-release_date']
         indexes = [
-            models.Index(fields=['artist', '-release_date']),
+            models.Index(fields=['-release_date']),
         ]
     
     def __str__(self):
-        return f"{self.title} - {self.artist.name}"
+        artist_names = ', '.join(self.artist.values_list('name', flat=True))
+        return f"{self.title} - {artist_names}" if artist_names else self.title
 
 
 class Tag(models.Model):
@@ -128,11 +129,11 @@ class Music(models.Model):
         BILINGUAL = 'BILINGUAL', _('Bilingual')
     
     title = models.CharField(_('title'), max_length=200)
-    artist = models.ForeignKey(
+    artist = models.ManyToManyField(
         Artist,
-        on_delete=models.CASCADE,
         related_name='music_tracks',
-        verbose_name=_('artist')
+        verbose_name=_('artists'),
+        blank=True
     )
     album = models.ForeignKey(
         Album,
@@ -187,14 +188,15 @@ class Music(models.Model):
         verbose_name_plural = _('music')
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['artist', '-created_at']),
+            models.Index(fields=['-created_at']),
             models.Index(fields=['album']),
             models.Index(fields=['language']),
             models.Index(fields=['-play_count']),
         ]
     
     def __str__(self):
-        return f"{self.title} - {self.artist.name}"
+        artist_names = ', '.join(self.artist.values_list('name', flat=True))
+        return f"{self.title} - {artist_names}" if artist_names else self.title
     
     def increment_play_count(self):
         """Increment play count"""

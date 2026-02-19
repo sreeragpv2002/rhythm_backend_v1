@@ -60,7 +60,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 
 class AlbumViewSet(viewsets.ModelViewSet):
     """ViewSet for Album management"""
-    queryset = Album.objects.select_related('artist').all()
+    queryset = Album.objects.prefetch_related('artist').all()
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'artist__name']
@@ -122,7 +122,7 @@ class TagViewSet(viewsets.ModelViewSet):
 
 class MusicViewSet(viewsets.ModelViewSet):
     """ViewSet for Music management"""
-    queryset = Music.objects.select_related('artist', 'album', 'uploaded_by').prefetch_related('tags').all()
+    queryset = Music.objects.prefetch_related('artist', 'tags').select_related('album', 'uploaded_by').all()
     permission_classes = [IsAuthenticated()]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'artist__name', 'album__title']
@@ -162,7 +162,7 @@ class MusicViewSet(viewsets.ModelViewSet):
         # Filter by artist
         artist_id = self.request.query_params.get('artist_id')
         if artist_id:
-            queryset = queryset.filter(artist_id=artist_id)
+            queryset = queryset.filter(artist__id=artist_id)
         
         # Filter by album
         album_id = self.request.query_params.get('album_id')

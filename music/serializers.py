@@ -31,16 +31,18 @@ class ArtistListSerializer(serializers.ModelSerializer):
 
 class AlbumSerializer(serializers.ModelSerializer):
     """Serializer for Album model"""
-    artist = ArtistListSerializer(read_only=True)
-    artist_id = serializers.PrimaryKeyRelatedField(
+    artist = ArtistListSerializer(many=True, read_only=True)
+    artist_ids = serializers.PrimaryKeyRelatedField(
         queryset=Artist.objects.all(),
         source='artist',
-        write_only=True
+        many=True,
+        write_only=True,
+        required=False
     )
     
     class Meta:
         model = Album
-        fields = ['id', 'title', 'artist', 'artist_id', 'release_date', 
+        fields = ['id', 'title', 'artist', 'artist_ids', 'release_date',
                   'cover_image', 'cover_image_url', 'description', 'created_at']
         read_only_fields = ['id', 'created_at']
     
@@ -51,17 +53,34 @@ class AlbumSerializer(serializers.ModelSerializer):
                 "Either 'cover_image' or 'cover_image_url' must be provided."
             )
         return data
+    
+    def create(self, validated_data):
+        artists = validated_data.pop('artist', [])
+        album = Album.objects.create(**validated_data)
+        if artists:
+            album.artist.set(artists)
+        return album
+    
+    def update(self, instance, validated_data):
+        artists = validated_data.pop('artist', None)
+        instance = super().update(instance, validated_data)
+        if artists is not None:
+            instance.artist.set(artists)
+        return instance
 
 
 
 
 class AlbumListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing albums"""
-    artist_name = serializers.CharField(source='artist.name', read_only=True)
+    artist_names = serializers.SerializerMethodField()
     
     class Meta:
         model = Album
-        fields = ['id', 'title', 'artist_name', 'cover_image', 'release_date']
+        fields = ['id', 'title', 'artist_names', 'cover_image', 'release_date']
+    
+    def get_artist_names(self, obj):
+        return list(obj.artist.values_list('name', flat=True))
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -75,7 +94,7 @@ class TagSerializer(serializers.ModelSerializer):
 
 class MusicSerializer(serializers.ModelSerializer):
     """Detailed serializer for Music model"""
-    artist = ArtistListSerializer(read_only=True)
+    artist = ArtistListSerializer(many=True, read_only=True)
     album = AlbumListSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     is_favorited = serializers.SerializerMethodField()
@@ -108,8 +127,9 @@ class MusicSerializer(serializers.ModelSerializer):
         return MusicListSerializer(related[:10], many=True, context=self.context).data
         
     def get_related_by_artist(self, obj):
-        """Get other songs by the same artist"""
-        related = Music.objects.filter(artist=obj.artist).exclude(id=obj.id)
+        """Get other songs by the same artists"""
+        artists = obj.artist.all()
+        related = Music.objects.filter(artist__in=artists).exclude(id=obj.id).distinct()
         # Exclude songs already in the album list if applicable
         if obj.album:
             related = related.exclude(album=obj.album)
@@ -120,9 +140,10 @@ class MusicSerializer(serializers.ModelSerializer):
         tags = obj.tags.all()
         if not tags:
             return []
+        artists = obj.artist.all()
         related = Music.objects.filter(tags__in=tags).exclude(id=obj.id).distinct()
         # Exclude songs already in artist or album list
-        related = related.exclude(artist=obj.artist)
+        related = related.exclude(artist__in=artists)
         if obj.album:
             related = related.exclude(album=obj.album)
         return MusicListSerializer(related[:10], many=True, context=self.context).data
@@ -131,15 +152,18 @@ class MusicSerializer(serializers.ModelSerializer):
 
 class MusicListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing music"""
-    artist_name = serializers.CharField(source='artist.name', read_only=True)
+    artist_names = serializers.SerializerMethodField()
     album_title = serializers.CharField(source='album.title', read_only=True, allow_null=True)
     tags = TagSerializer(many=True, read_only=True)
     is_favorited = serializers.SerializerMethodField()
     
     class Meta:
         model = Music
-        fields = ['id', 'title', 'artist_name', 'album_title', 'duration',
+        fields = ['id', 'title', 'artist_names', 'album_title', 'duration',
                   'language', 'tags', 'play_count', 'is_favorited']
+    
+    def get_artist_names(self, obj):
+        return list(obj.artist.values_list('name', flat=True))
     
     def get_is_favorited(self, obj):
         request = self.context.get('request')
@@ -150,10 +174,12 @@ class MusicListSerializer(serializers.ModelSerializer):
 
 class MusicUploadSerializer(serializers.ModelSerializer):
     """Serializer for uploading music (broadcaster/admin)"""
-    artist_id = serializers.PrimaryKeyRelatedField(
+    artist_ids = serializers.PrimaryKeyRelatedField(
         queryset=Artist.objects.all(),
         source='artist',
-        write_only=True
+        many=True,
+        write_only=True,
+        required=False
     )
     album_id = serializers.PrimaryKeyRelatedField(
         queryset=Album.objects.all(),
@@ -171,7 +197,7 @@ class MusicUploadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Music
-        fields = ['id', 'title', 'artist_id', 'album_id', 'audio_file', 'audio_url',
+        fields = ['id', 'title', 'artist_ids', 'album_id', 'audio_file', 'audio_url',
                   'duration', 'language', 'tag_ids']
     
     def validate(self, data):
@@ -184,8 +210,11 @@ class MusicUploadSerializer(serializers.ModelSerializer):
 
     
     def create(self, validated_data):
+        artist_ids = validated_data.pop('artist', [])
         tag_ids = validated_data.pop('tag_ids', [])
         music = Music.objects.create(**validated_data)
+        if artist_ids:
+            music.artist.set(artist_ids)
         if tag_ids:
             music.tags.set(tag_ids)
         return music

@@ -14,9 +14,10 @@ class ArtistAdmin(TranslationAdmin):
 @admin.register(Album)
 class AlbumAdmin(TranslationAdmin):
     """Admin configuration for Album model"""
-    list_display = ('title', 'artist', 'release_date', 'cover_image', 'cover_image_url', 'created_at')
-    list_filter = ('artist', 'release_date')
+    list_display = ('title', 'release_date', 'cover_image', 'cover_image_url', 'created_at')
+    list_filter = ('release_date',)
     search_fields = ('title', 'artist__name')
+    filter_horizontal = ('artist',)
     readonly_fields = ('created_at', 'updated_at')
 
 
@@ -32,10 +33,10 @@ class TagAdmin(TranslationAdmin):
 @admin.register(Music)
 class MusicAdmin(TranslationAdmin):
     """Admin configuration for Music model"""
-    list_display = ('title', 'artist', 'album', 'audio_file', 'audio_url', 'language', 'play_count', 'uploaded_by', 'created_at')
-    list_filter = ('language', 'artist', 'album', 'created_at')
+    list_display = ('title', 'album', 'audio_file', 'audio_url', 'language', 'play_count', 'uploaded_by', 'created_at')
+    list_filter = ('language', 'album', 'created_at')
     search_fields = ('title', 'artist__name', 'album__title')
-    filter_horizontal = ('tags',)
+    filter_horizontal = ('artist', 'tags',)
     readonly_fields = ('play_count', 'created_at', 'updated_at')
     
     def save_model(self, request, obj, form, change):
