@@ -101,3 +101,31 @@ msgstr "تمت الإزالة بنجاح"
 
 msgid "Music uploaded successfully"
 msgstr "تم تحميل الموسيقى بنجاح"
+
+
+msgid "English"
+msgstr "الإنجليزية"
+
+msgid "Arabic"
+msgstr "العربية"
+
+msgid "Malayalam"
+msgstr "المالايالامية"
+
+msgid "Hindi"
+msgstr "الهندية"
+
+msgid "Telugu"
+msgstr "التيلجو"
+
+msgid "Kannada"
+msgstr "الكانادا"
+
+msgid "Tamil"
+msgstr "التاميلية"
+
+msgid "Instrumental"
+msgstr "موسيقى آلية"
+
+msgid "Bilingual"
+msgstr "ثنائي اللغة"

@@ -119,6 +119,11 @@ class Music(models.Model):
     class Language(models.TextChoices):
         ENGLISH = 'ENGLISH', _('English')
         ARABIC = 'ARABIC', _('Arabic')
+        MALAYALAM = 'MALAYALAM', _('Malayalam')
+        HINDI = 'HINDI', _('Hindi')
+        TELUGU = 'TELUGU', _('Telugu')
+        KANNADA = 'KANNADA', _('Kannada')
+        TAMIL = 'TAMIL', _('Tamil')
         INSTRUMENTAL = 'INSTRUMENTAL', _('Instrumental')
         BILINGUAL = 'BILINGUAL', _('Bilingual')
     
