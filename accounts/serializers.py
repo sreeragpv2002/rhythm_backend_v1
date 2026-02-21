@@ -88,6 +88,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'last_name': self.user.last_name,
             'role': self.user.role,
             'is_email_verified': self.user.is_email_verified,
+            'has_profile': hasattr(self.user, 'profile'),
         }
         
         return data
