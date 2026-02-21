@@ -158,6 +158,8 @@ class MusicListSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     language_display = serializers.CharField(source='get_language_display', read_only=True)
     
+    is_favorited = serializers.SerializerMethodField()
+    
     class Meta:
         model = Music
         fields = ['id', 'title', 'artist_names', 'album_title', 'duration',

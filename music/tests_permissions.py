@@ -14,9 +14,9 @@ class MusicPermissionTest(TestCase):
         self.artist = Artist.objects.create(name='Test Artist')
         self.music = Music.objects.create(
             title='Test Song',
-            artist=self.artist,
             uploaded_by=self.user
         )
+        self.music.artist.set([self.artist])
 
     def test_list_music_unauthenticated(self):
         """Test that anyone can see the music list"""
