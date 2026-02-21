@@ -199,48 +199,106 @@ class HomeViewSet(viewsets.ViewSet):
         sections = []
         music_ids = set()
         
-        # Helper to add section
-        def add_section(title, slug, queryset):
-            ids = list(queryset.values_list('id', flat=True))
+        # 1. Recently Played (Preserve order)
+        recently_played_ids = list(RecentlyPlayed.objects.filter(user=user).order_by('-played_at').values_list('music_id', flat=True)[:10])
+        if recently_played_ids:
             sections.append({
-                'title': title,
-                'slug': slug,
-                'items': ids
+                'title': "Recently Played",
+                'slug': "recently_played",
+                'items': recently_played_ids
             })
-            music_ids.update(ids)
-
-        # 1. Recently Played
-        recently_played = RecentlyPlayed.objects.filter(user=user).select_related('music').order_by('-played_at')[:10]
-        add_section("Recently Played", "recently_played", Music.objects.filter(id__in=recently_played.values_list('music_id', flat=True)))
+            music_ids.update(recently_played_ids)
         
-        # 2. Favorites
-        favorites = Favorite.objects.filter(user=user).select_related('music')[:10]
-        add_section("Favorites", "favorites", Music.objects.filter(id__in=favorites.values_list('music_id', flat=True)))
+        # 2. Favorites (Preserve order)
+        favorite_ids = list(Favorite.objects.filter(user=user).order_by('-created_at').values_list('music_id', flat=True)[:15])
+        if favorite_ids:
+            sections.append({
+                'title': "Favorites",
+                'slug': "favorites",
+                'items': favorite_ids
+            })
+            music_ids.update(favorite_ids)
         
         # 3. Recommended by Artists
         favorite_artists = user.profile.favorite_artists.all()
         if favorite_artists.exists():
             recommended_by_artists = Music.objects.filter(
                 artist__in=favorite_artists
-            ).exclude(
-                id__in=recently_played.values_list('music_id', flat=True)
-            ).order_by('-play_count')[:15]
-            add_section("For You: Artists", "recommended_artists", recommended_by_artists)
+            ).exclude(id__in=recently_played_ids).distinct().order_by('-play_count')[:15]
+            
+            rec_ids = list(recommended_by_artists.values_list('id', flat=True))
+            if rec_ids:
+                sections.append({
+                    'title': "Recommended for You",
+                    'slug': "recommended_for_you",
+                    'items': rec_ids
+                })
+                music_ids.update(rec_ids)
 
-        # 4. Trending
+        # 4. Recommended by Mood/Tags
+        if recently_played_ids:
+            recent_tags = Tag.objects.filter(music_tracks__id__in=recently_played_ids[:5]).distinct()
+            if recent_tags.exists():
+                recommended_by_tags = Music.objects.filter(tags__in=recent_tags).exclude(id__in=recently_played_ids).distinct().order_by('-play_count')[:15]
+                tag_ids = list(recommended_by_tags.values_list('id', flat=True))
+                if tag_ids:
+                    sections.append({
+                        'title': "Based on your mood",
+                        'slug': "recommended_mood",
+                        'items': tag_ids
+                    })
+                    music_ids.update(tag_ids)
+
+        # 5. Trending
         trending = Music.objects.order_by('-play_count')[:15]
-        add_section("Trending", "trending", trending)
+        trending_ids = list(trending.values_list('id', flat=True))
+        if trending_ids:
+            sections.append({
+                'title': "Trending",
+                'slug': "trending",
+                'items': trending_ids
+            })
+            music_ids.update(trending_ids)
 
-        # 5. New Releases
+        # 6. New Releases
         new_releases = Music.objects.order_by('-created_at')[:15]
-        add_section("New Releases", "new_releases", new_releases)
+        new_ids = list(new_releases.values_list('id', flat=True))
+        if new_ids:
+            sections.append({
+                'title': "New Releases",
+                'slug': "new_releases",
+                'items': new_ids
+            })
+            music_ids.update(new_ids)
+
+        # 7. Popular in Language
+        user_lang = user.profile.language
+        lang_enum = Music.Language.ARABIC if user_lang == 'ar' else Music.Language.ENGLISH
+        popular_lang = Music.objects.filter(language=lang_enum).order_by('-play_count')[:15]
+        lang_ids = list(popular_lang.values_list('id', flat=True))
+        if lang_ids:
+            sections.append({
+                'title': "Popular in your language",
+                'slug': "popular_language",
+                'items': lang_ids
+            })
+            music_ids.update(lang_ids)
 
         return sections, music_ids
+
+
 
     def list(self, request):
         """Get normalized home feed"""
         user = request.user
-        cache_key = f"home_feed_{user.id}_{user.profile.language}"
+        
+        # Use profile language or default
+        try:
+            lang = user.profile.language
+        except:
+            lang = 'en'
+            
+        cache_key = f"home_feed_{user.id}_{lang}"
         
         # Try to get from cache
         cached_data = cache.get(cache_key)
@@ -248,7 +306,6 @@ class HomeViewSet(viewsets.ViewSet):
             return Response(success_response(data=cached_data))
 
         sections_data, music_ids = self.get_home_sections(user, request)
-
         
         # Fetch all music objects for the map
         music_objs = Music.objects.filter(id__in=music_ids).prefetch_related('artist', 'tags', 'album')
@@ -263,10 +320,10 @@ class HomeViewSet(viewsets.ViewSet):
         cache.set(cache_key, data, 300)
         
         return Response(success_response(
-
             message="Home feed loaded successfully",
             data=data
         ))
+
 
     @action(detail=False, methods=['get'], url_path='section/(?P<slug>[^/.]+)')
     def section(self, request, slug=None):
@@ -284,11 +341,20 @@ class HomeViewSet(viewsets.ViewSet):
             queryset = Music.objects.order_by('-play_count')
         elif slug == 'new_releases':
             queryset = Music.objects.order_by('-created_at')
-        elif slug == 'recommended_artists':
+        elif slug == 'recommended_for_you':
             favorite_artists = user.profile.favorite_artists.all()
             queryset = Music.objects.filter(artist__in=favorite_artists).order_by('-play_count')
+        elif slug == 'recommended_mood':
+            recently_played_ids = RecentlyPlayed.objects.filter(user=user).order_by('-played_at').values_list('music_id', flat=True)[:5]
+            recent_tags = Tag.objects.filter(music_tracks__id__in=recently_played_ids).distinct()
+            queryset = Music.objects.filter(tags__in=recent_tags).exclude(id__in=recently_played_ids).distinct().order_by('-play_count')
+        elif slug == 'popular_language':
+            user_lang = getattr(user.profile, 'language', 'en')
+            lang_enum = Music.Language.ARABIC if user_lang == 'ar' else Music.Language.ENGLISH
+            queryset = Music.objects.filter(language=lang_enum).order_by('-play_count')
         else:
             return Response(error_response(message="Invalid section slug"), status=status.HTTP_404_NOT_FOUND)
+
 
         # Use standard pagination
         from api.pagination import StandardResultsSetPagination
