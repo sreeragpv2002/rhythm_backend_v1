@@ -77,7 +77,7 @@ class AlbumListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Album
-        fields = ['id', 'title', 'artist_names', 'cover_image', 'release_date']
+        fields = ['id', 'title', 'artist_names', 'cover_image', 'cover_image_url', 'release_date']
     
     def get_artist_names(self, obj):
         return list(obj.artist.values_list('name', flat=True))
@@ -162,7 +162,7 @@ class MusicListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Music
-        fields = ['id', 'title', 'artist_names', 'album_title', 'duration',
+        fields = ['id', 'title', 'artist_names', 'album_title', 'thumb_url', 'audio_url', 'duration',
                   'language', 'language_display', 'tags', 'play_count', 'is_favorited']
     
     def get_artist_names(self, obj):
