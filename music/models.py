@@ -154,6 +154,7 @@ class Music(models.Model):
         ]
     )
     audio_url = models.URLField(_('audio URL'), max_length=500, null=True, blank=True)
+    thumb_url = models.URLField(_('thumbnail URL'), max_length=500, null=True, blank=True)
 
     duration = models.PositiveIntegerField(
         _('duration'),

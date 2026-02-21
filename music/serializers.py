@@ -102,11 +102,12 @@ class MusicSerializer(serializers.ModelSerializer):
     related_by_artist = serializers.SerializerMethodField()
     related_by_tags = serializers.SerializerMethodField()
 
+    language_display = serializers.CharField(source='get_language_display', read_only=True)
     
     class Meta:
         model = Music
-        fields = ['id', 'title', 'artist', 'album', 'audio_file', 'audio_url', 'duration',
-                  'language', 'tags', 'play_count', 'is_favorited', 'created_at',
+        fields = ['id', 'title', 'artist', 'album', 'audio_file', 'audio_url', 'thumb_url', 'duration',
+                  'language', 'language_display', 'tags', 'play_count', 'is_favorited', 'created_at',
                   'related_by_album', 'related_by_artist', 'related_by_tags']
         read_only_fields = ['id', 'play_count', 'created_at']
 
@@ -155,12 +156,12 @@ class MusicListSerializer(serializers.ModelSerializer):
     artist_names = serializers.SerializerMethodField()
     album_title = serializers.CharField(source='album.title', read_only=True, allow_null=True)
     tags = TagSerializer(many=True, read_only=True)
-    is_favorited = serializers.SerializerMethodField()
+    language_display = serializers.CharField(source='get_language_display', read_only=True)
     
     class Meta:
         model = Music
         fields = ['id', 'title', 'artist_names', 'album_title', 'duration',
-                  'language', 'tags', 'play_count', 'is_favorited']
+                  'language', 'language_display', 'tags', 'play_count', 'is_favorited']
     
     def get_artist_names(self, obj):
         return list(obj.artist.values_list('name', flat=True))
@@ -197,7 +198,7 @@ class MusicUploadSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Music
-        fields = ['id', 'title', 'artist_ids', 'album_id', 'audio_file', 'audio_url',
+        fields = ['id', 'title', 'artist_ids', 'album_id', 'audio_file', 'audio_url', 'thumb_url',
                   'duration', 'language', 'tag_ids']
     
     def validate(self, data):
