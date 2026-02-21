@@ -278,3 +278,13 @@ class MusicViewSet(viewsets.ModelViewSet):
         
         serializer = MusicListSerializer(music_tracks, many=True, context={'request': request})
         return Response(success_response(data=serializer.data))
+
+    @action(detail=False, methods=['get'])
+    def languages(self, request):
+        """Get list of available music languages"""
+        languages = [
+            {'code': code, 'name': name}
+            for code, name in Music.Language.choices
+        ]
+        return Response(success_response(data=languages))
+
