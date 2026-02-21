@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -11,11 +12,14 @@ from api.messages import *
 from .models import Playlist, RecentlyPlayed, Favorite, Music, Tag
 from .serializers import (
     PlaylistSerializer, PlaylistCreateSerializer, PlaylistAddTrackSerializer,
-    RecentlyPlayedSerializer, FavoriteSerializer, MusicListSerializer
+    RecentlyPlayedSerializer, FavoriteSerializer, MusicListSerializer,
+    NormalizedMusicSerializer, HomeSectionSerializer, HomeFeedSerializer
 )
 
 
 class PlaylistViewSet(viewsets.ModelViewSet):
+# ... (existing PlaylistViewSet remains the same, I'll use multi_replace if needed but for now I'll replace the whole file or use multi_replace for accuracy)
+
     """ViewSet for Playlist management"""
     serializer_class = PlaylistSerializer
     permission_classes = [IsAuthenticated]
@@ -187,88 +191,114 @@ class RecentlyPlayedViewSet(viewsets.ViewSet):
 
 
 class HomeViewSet(viewsets.ViewSet):
-    """ViewSet for personalized home feed"""
+    """ViewSet for personalized home feed with normalization and pagination"""
     permission_classes = [IsAuthenticated]
     
-    def list(self, request):
-        """Get personalized home feed based on user interests and recent activity"""
-        user = request.user
-        home_data = {}
+    def get_home_sections(self, user, request):
+        """Define and fetch data for home sections"""
+        sections = []
+        music_ids = set()
         
+        # Helper to add section
+        def add_section(title, slug, queryset):
+            ids = list(queryset.values_list('id', flat=True))
+            sections.append({
+                'title': title,
+                'slug': slug,
+                'items': ids
+            })
+            music_ids.update(ids)
+
         # 1. Recently Played
-        recently_played = RecentlyPlayed.objects.filter(user=user).select_related('music')[:10]
-        home_data['recently_played'] = RecentlyPlayedSerializer(
-            recently_played, many=True, context={'request': request}
-        ).data
+        recently_played = RecentlyPlayed.objects.filter(user=user).select_related('music').order_by('-played_at')[:10]
+        add_section("Recently Played", "recently_played", Music.objects.filter(id__in=recently_played.values_list('music_id', flat=True)))
         
         # 2. Favorites
         favorites = Favorite.objects.filter(user=user).select_related('music')[:10]
-        home_data['favorites'] = FavoriteSerializer(
-            favorites, many=True, context={'request': request}
-        ).data
+        add_section("Favorites", "favorites", Music.objects.filter(id__in=favorites.values_list('music_id', flat=True)))
         
-        # 3. Recommended based on favorite artists
+        # 3. Recommended by Artists
         favorite_artists = user.profile.favorite_artists.all()
         if favorite_artists.exists():
             recommended_by_artists = Music.objects.filter(
                 artist__in=favorite_artists
             ).exclude(
                 id__in=recently_played.values_list('music_id', flat=True)
-            ).order_by('-play_count')[:20]
-            home_data['recommended_by_artists'] = MusicListSerializer(
-                recommended_by_artists, many=True, context={'request': request}
-            ).data
-        else:
-            home_data['recommended_by_artists'] = []
+            ).order_by('-play_count')[:15]
+            add_section("For You: Artists", "recommended_artists", recommended_by_artists)
+
+        # 4. Trending
+        trending = Music.objects.order_by('-play_count')[:15]
+        add_section("Trending", "trending", trending)
+
+        # 5. New Releases
+        new_releases = Music.objects.order_by('-created_at')[:15]
+        add_section("New Releases", "new_releases", new_releases)
+
+        return sections, music_ids
+
+    def list(self, request):
+        """Get normalized home feed"""
+        user = request.user
+        cache_key = f"home_feed_{user.id}_{user.profile.language}"
         
-        # 4. Recommended based on recently played genres/tags
-        recent_music_ids = recently_played.values_list('music_id', flat=True)[:5]
-        if recent_music_ids:
-            # Get tags from recently played music
-            recent_tags = Tag.objects.filter(
-                music_tracks__id__in=recent_music_ids
-            ).distinct()
-            
-            # Find music with similar tags
-            recommended_by_tags = Music.objects.filter(
-                tags__in=recent_tags
-            ).exclude(
-                id__in=recent_music_ids
-            ).distinct().order_by('-play_count')[:20]
-            
-            home_data['recommended_by_mood'] = MusicListSerializer(
-                recommended_by_tags, many=True, context={'request': request}
-            ).data
-        else:
-            home_data['recommended_by_mood'] = []
+        # Try to get from cache
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(success_response(data=cached_data))
+
+        sections_data, music_ids = self.get_home_sections(user, request)
+
         
-        # 5. Trending music (most played overall)
-        trending = Music.objects.order_by('-play_count')[:20]
-        home_data['trending'] = MusicListSerializer(
-            trending, many=True, context={'request': request}
-        ).data
+        # Fetch all music objects for the map
+        music_objs = Music.objects.filter(id__in=music_ids).prefetch_related('artist', 'tags', 'album')
+        music_map = {str(m.id): NormalizedMusicSerializer(m, context={'request': request}).data for m in music_objs}
         
-        # 6. New releases (recent uploads)
-        new_releases = Music.objects.order_by('-created_at')[:20]
-        home_data['new_releases'] = MusicListSerializer(
-            new_releases, many=True, context={'request': request}
-        ).data
+        data = {
+            'sections': sections_data,
+            'music_map': music_map
+        }
         
-        # 7. Popular by language (based on user's preferred language)
-        user_language = user.profile.language
-        if user_language == 'ar':
-            music_language = Music.Language.ARABIC
-        else:
-            music_language = Music.Language.ENGLISH
-        
-        popular_by_language = Music.objects.filter(
-            language=music_language
-        ).order_by('-play_count')[:20]
-        home_data['popular_in_your_language'] = MusicListSerializer(
-            popular_by_language, many=True, context={'request': request}
-        ).data
+        # Cache for 5 minutes
+        cache.set(cache_key, data, 300)
         
         return Response(success_response(
+
             message="Home feed loaded successfully",
-            data=home_data
+            data=data
         ))
+
+    @action(detail=False, methods=['get'], url_path='section/(?P<slug>[^/.]+)')
+    def section(self, request, slug=None):
+        """Get paginated music for a specific section"""
+        user = request.user
+        queryset = Music.objects.none()
+
+        if slug == 'recently_played':
+            recently_played_ids = RecentlyPlayed.objects.filter(user=user).order_by('-played_at').values_list('music_id', flat=True)
+            queryset = Music.objects.filter(id__in=recently_played_ids)
+        elif slug == 'favorites':
+            favorite_ids = Favorite.objects.filter(user=user).values_list('music_id', flat=True)
+            queryset = Music.objects.filter(id__in=favorite_ids)
+        elif slug == 'trending':
+            queryset = Music.objects.order_by('-play_count')
+        elif slug == 'new_releases':
+            queryset = Music.objects.order_by('-created_at')
+        elif slug == 'recommended_artists':
+            favorite_artists = user.profile.favorite_artists.all()
+            queryset = Music.objects.filter(artist__in=favorite_artists).order_by('-play_count')
+        else:
+            return Response(error_response(message="Invalid section slug"), status=status.HTTP_404_NOT_FOUND)
+
+        # Use standard pagination
+        from api.pagination import StandardResultsSetPagination
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = NormalizedMusicSerializer(page, many=True, context={'request': request})
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = NormalizedMusicSerializer(queryset, many=True, context={'request': request})
+        return Response(success_response(data=serializer.data))
+

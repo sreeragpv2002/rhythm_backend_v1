@@ -1,5 +1,7 @@
+from django.conf import settings
 from rest_framework import serializers
 from .models import Artist, Album, Tag, Music, Playlist, RecentlyPlayed, Favorite
+
 
 
 class ArtistSerializer(serializers.ModelSerializer):
@@ -285,3 +287,54 @@ class MusicSearchSerializer(serializers.Serializer):
     tags = serializers.CharField(required=False, help_text="Comma-separated tag names")
     min_duration = serializers.IntegerField(required=False, help_text="Minimum duration in seconds")
     max_duration = serializers.IntegerField(required=False, help_text="Maximum duration in seconds")
+
+class NormalizedMusicSerializer(serializers.ModelSerializer):
+    """Compact serializer for normalization, including multi-language titles"""
+    titles = serializers.SerializerMethodField()
+    artist_names = serializers.SerializerMethodField()
+    album_title = serializers.CharField(source='album.title', read_only=True, allow_null=True)
+    language_display = serializers.CharField(source='get_language_display', read_only=True)
+    is_favorited = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Music
+        fields = [
+            'id', 'titles', 'artist_names', 'album_title', 'thumb_url', 
+            'audio_url', 'duration', 'language', 'language_display', 
+            'play_count', 'is_favorited'
+        ]
+
+    def get_titles(self, obj):
+        """Return a map of titles in different languages"""
+        titles = {}
+        for lang_code, lang_name in settings.LANGUAGES:
+            field_name = f'title_{lang_code}'
+            # Check if translated field exists (modeltranslation adds these)
+            if hasattr(obj, field_name):
+                titles[lang_code] = getattr(obj, field_name) or obj.title
+            else:
+                titles[lang_code] = obj.title
+        return titles
+
+    def get_artist_names(self, obj):
+        return list(obj.artist.values_list('name', flat=True))
+
+    def get_is_favorited(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Favorite.objects.filter(user=request.user, music=obj).exists()
+        return False
+
+
+class HomeSectionSerializer(serializers.Serializer):
+    """Serializer for a section in the home feed"""
+    title = serializers.CharField()
+    slug = serializers.CharField()
+    items = serializers.ListField(child=serializers.IntegerField())
+    has_more = serializers.BooleanField(default=False)
+
+
+class HomeFeedSerializer(serializers.Serializer):
+    """Serializer for the entire normalized home feed"""
+    sections = HomeSectionSerializer(many=True)
+    music_map = serializers.DictField(child=NormalizedMusicSerializer())
