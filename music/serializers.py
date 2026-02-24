@@ -103,19 +103,24 @@ class MusicSerializer(serializers.ModelSerializer):
     related_by_album = serializers.SerializerMethodField()
     related_by_artist = serializers.SerializerMethodField()
     related_by_tags = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
 
     language_display = serializers.CharField(source='get_language_display', read_only=True)
     
     class Meta:
         model = Music
         fields = ['id', 'title', 'artist', 'album', 'audio_file', 'audio_url', 'thumb_url', 'duration',
-                  'language', 'language_display', 'tags', 'play_count', 'is_favorited', 'created_at',
+                  'language', 'language_display', 'tags', 'play_count', 'is_favorited', 'is_favorite', 'created_at',
                   'related_by_album', 'related_by_artist', 'related_by_tags']
         read_only_fields = ['id', 'play_count', 'created_at']
 
 
     
     def get_is_favorited(self, obj):
+        """Check if current user has favorited this music (Legacy)"""
+        return self.get_is_favorite(obj)
+
+    def get_is_favorite(self, obj):
         """Check if current user has favorited this music"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
@@ -161,16 +166,20 @@ class MusicListSerializer(serializers.ModelSerializer):
     language_display = serializers.CharField(source='get_language_display', read_only=True)
     
     is_favorited = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
     
     class Meta:
         model = Music
         fields = ['id', 'title', 'artist_names', 'album_title', 'thumb_url', 'audio_url', 'duration',
-                  'language', 'language_display', 'tags', 'play_count', 'is_favorited']
+                  'language', 'language_display', 'tags', 'play_count', 'is_favorited', 'is_favorite']
     
     def get_artist_names(self, obj):
         return list(obj.artist.values_list('name', flat=True))
     
     def get_is_favorited(self, obj):
+        return self.get_is_favorite(obj)
+
+    def get_is_favorite(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return Favorite.objects.filter(user=request.user, music=obj).exists()
@@ -295,13 +304,14 @@ class NormalizedMusicSerializer(serializers.ModelSerializer):
     album_titles = serializers.SerializerMethodField()
     language_display = serializers.CharField(source='get_language_display', read_only=True)
     is_favorited = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = Music
         fields = [
             'id', 'titles', 'artist_names', 'album_titles', 'thumb_url', 
             'audio_url', 'duration', 'language', 'language_display', 
-            'play_count', 'is_favorited'
+            'play_count', 'is_favorited', 'is_favorite'
         ]
 
     def get_titles(self, obj):
@@ -338,6 +348,9 @@ class NormalizedMusicSerializer(serializers.ModelSerializer):
         return titles
 
     def get_is_favorited(self, obj):
+        return self.get_is_favorite(obj)
+
+    def get_is_favorite(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return Favorite.objects.filter(user=request.user, music=obj).exists()

@@ -1,3 +1,0 @@
-# This file is intentionally empty.
-# Translation strings will be added when you run:
-# python manage.py makemessages -l en
