@@ -292,14 +292,14 @@ class NormalizedMusicSerializer(serializers.ModelSerializer):
     """Compact serializer for normalization, including multi-language titles"""
     titles = serializers.SerializerMethodField()
     artist_names = serializers.SerializerMethodField()
-    album_title = serializers.CharField(source='album.title', read_only=True, allow_null=True)
+    album_titles = serializers.SerializerMethodField()
     language_display = serializers.CharField(source='get_language_display', read_only=True)
     is_favorited = serializers.SerializerMethodField()
 
     class Meta:
         model = Music
         fields = [
-            'id', 'titles', 'artist_names', 'album_title', 'thumb_url', 
+            'id', 'titles', 'artist_names', 'album_titles', 'thumb_url', 
             'audio_url', 'duration', 'language', 'language_display', 
             'play_count', 'is_favorited'
         ]
@@ -317,7 +317,25 @@ class NormalizedMusicSerializer(serializers.ModelSerializer):
         return titles
 
     def get_artist_names(self, obj):
-        return list(obj.artist.values_list('name', flat=True))
+        """Return a list of maps with artist names in different languages"""
+        artists_data = []
+        for artist in obj.artist.all():
+            names = {}
+            for lang_code, _ in settings.LANGUAGES:
+                field_name = f'name_{lang_code}'
+                names[lang_code] = getattr(artist, field_name, artist.name) or artist.name
+            artists_data.append(names)
+        return artists_data
+
+    def get_album_titles(self, obj):
+        """Return a map of album titles in different languages"""
+        if not obj.album:
+            return None
+        titles = {}
+        for lang_code, _ in settings.LANGUAGES:
+            field_name = f'title_{lang_code}'
+            titles[lang_code] = getattr(obj.album, field_name, obj.album.title) or obj.album.title
+        return titles
 
     def get_is_favorited(self, obj):
         request = self.context.get('request')
