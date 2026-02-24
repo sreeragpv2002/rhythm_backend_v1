@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Q, Count
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from datetime import timedelta
 from accounts.permissions import IsOwnerOrAdmin
 from api.response import success_response, error_response
@@ -203,7 +204,7 @@ class HomeViewSet(viewsets.ViewSet):
         recently_played_ids = list(RecentlyPlayed.objects.filter(user=user).order_by('-played_at').values_list('music_id', flat=True)[:10])
         if recently_played_ids:
             sections.append({
-                'title': "Recently Played",
+                'title': _("Recently Played"),
                 'slug': "recently_played",
                 'items': recently_played_ids
             })
@@ -213,7 +214,7 @@ class HomeViewSet(viewsets.ViewSet):
         favorite_ids = list(Favorite.objects.filter(user=user).order_by('-created_at').values_list('music_id', flat=True)[:15])
         if favorite_ids:
             sections.append({
-                'title': "Favorites",
+                'title': _("Favorites"),
                 'slug': "favorites",
                 'items': favorite_ids
             })
@@ -229,7 +230,7 @@ class HomeViewSet(viewsets.ViewSet):
             rec_ids = list(recommended_by_artists.values_list('id', flat=True))
             if rec_ids:
                 sections.append({
-                    'title': "Recommended for You",
+                    'title': _("Recommended for You"),
                     'slug': "recommended_for_you",
                     'items': rec_ids
                 })
@@ -243,7 +244,7 @@ class HomeViewSet(viewsets.ViewSet):
                 tag_ids = list(recommended_by_tags.values_list('id', flat=True))
                 if tag_ids:
                     sections.append({
-                        'title': "Based on your mood",
+                        'title': _("Based on your mood"),
                         'slug': "recommended_mood",
                         'items': tag_ids
                     })
@@ -254,7 +255,7 @@ class HomeViewSet(viewsets.ViewSet):
         trending_ids = list(trending.values_list('id', flat=True))
         if trending_ids:
             sections.append({
-                'title': "Trending",
+                'title': _("Trending"),
                 'slug': "trending",
                 'items': trending_ids
             })
@@ -265,7 +266,7 @@ class HomeViewSet(viewsets.ViewSet):
         new_ids = list(new_releases.values_list('id', flat=True))
         if new_ids:
             sections.append({
-                'title': "New Releases",
+                'title': _("New Releases"),
                 'slug': "new_releases",
                 'items': new_ids
             })
@@ -278,7 +279,7 @@ class HomeViewSet(viewsets.ViewSet):
         lang_ids = list(popular_lang.values_list('id', flat=True))
         if lang_ids:
             sections.append({
-                'title': "Popular in your language",
+                'title': _("Popular in your language"),
                 'slug': "popular_language",
                 'items': lang_ids
             })

@@ -218,6 +218,29 @@ class MusicViewSet(viewsets.ModelViewSet):
             message="Music streaming started",
             data=serializer.data
         ))
+
+    @action(detail=True, methods=['post'])
+    def favorite(self, request, pk=None):
+        """Toggle favorite status for a music track"""
+        music = self.get_object()
+        user = request.user
+        
+        favorite_qs = Favorite.objects.filter(user=user, music=music)
+        
+        if favorite_qs.exists():
+            favorite_qs.delete()
+            return Response({
+                "action": "removed",
+                "is_favorite": False,
+                "message": "Removed from favorites"
+            }, status=status.HTTP_200_OK)
+        else:
+            Favorite.objects.create(user=user, music=music)
+            return Response({
+                "action": "added",
+                "is_favorite": True,
+                "message": "Added to favorites"
+            }, status=status.HTTP_201_CREATED)
     
     @action(detail=False, methods=['get'])
     def trending(self, request):

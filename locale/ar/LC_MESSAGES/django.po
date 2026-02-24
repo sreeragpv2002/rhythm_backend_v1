@@ -129,3 +129,24 @@ msgstr "موسيقى آلية"
 
 msgid "Bilingual"
 msgstr "ثنائي اللغة"
+
+msgid "Recently Played"
+msgstr "المشغلة مؤخراً"
+
+msgid "Favorites"
+msgstr "المفضلة"
+
+msgid "Recommended for You"
+msgstr "موصى به لك"
+
+msgid "Based on your mood"
+msgstr "بناءً على حالتك المزاجية"
+
+msgid "Trending"
+msgstr "الرائج"
+
+msgid "New Releases"
+msgstr "الإصدارات الجديدة"
+
+msgid "Popular in your language"
+msgstr "شائع بلغتك"
