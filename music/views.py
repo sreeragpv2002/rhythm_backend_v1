@@ -27,7 +27,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
     queryset = Artist.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'bio']
+    search_fields = ['name', 'bio', 'name_ar', 'bio_ar', 'name_en', 'bio_en']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
     
@@ -63,7 +63,7 @@ class AlbumViewSet(viewsets.ModelViewSet):
     queryset = Album.objects.prefetch_related('artist').all()
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['title', 'artist__name']
+    search_fields = ['title', 'artist__name', 'title_ar', 'title_en', 'artist__name_ar', 'artist__name_en']
     ordering_fields = ['title', 'release_date', 'created_at']
     ordering = ['-release_date']
     
@@ -92,7 +92,7 @@ class TagViewSet(viewsets.ModelViewSet):
     serializer_class = TagSerializer
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name']
+    search_fields = ['name', 'name_ar', 'name_en']
     ordering_fields = ['name', 'category']
     ordering = ['category', 'name']
     
@@ -282,11 +282,17 @@ class MusicViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Search in title, artist name, album title
+        # Search in title, artist name, album title (all languages)
         music_tracks = Music.objects.filter(
             Q(title__icontains=query) |
+            Q(title_en__icontains=query) |
+            Q(title_ar__icontains=query) |
             Q(artist__name__icontains=query) |
-            Q(album__title__icontains=query)
+            Q(artist__name_en__icontains=query) |
+            Q(artist__name_ar__icontains=query) |
+            Q(album__title__icontains=query) |
+            Q(album__title_en__icontains=query) |
+            Q(album__title_ar__icontains=query)
         ).distinct()
         
         # Apply additional filters
