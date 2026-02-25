@@ -299,7 +299,9 @@ class HomeViewSet(viewsets.ViewSet):
         except:
             lang = 'en'
             
-        cache_key = f"home_feed_{user.id}_{lang}"
+        # Get global cache version for music-wide invalidation
+        home_version = cache.get("home_feed_version", 1)
+        cache_key = f"home_feed_{user.id}_{lang}_{home_version}"
         
         # Try to get from cache
         cached_data = cache.get(cache_key)

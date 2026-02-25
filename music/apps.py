@@ -5,3 +5,6 @@ class MusicConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'music'
     verbose_name = 'Music Management'
+
+    def ready(self):
+        import music.signals

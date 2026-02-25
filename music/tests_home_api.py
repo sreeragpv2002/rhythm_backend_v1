@@ -11,8 +11,8 @@ class HomeAPITests(APITestCase):
         
         # Ensure profile exists (if signal doesn't handle it)
         if not hasattr(self.user, 'profile'):
-            from accounts.models import Profile
-            Profile.objects.create(user=self.user)
+            from accounts.models import UserProfile
+            UserProfile.objects.create(user=self.user)
 
         self.artist = Artist.objects.create(name='Test Artist')
         self.music = Music.objects.create(title='Test Song', audio_url='http://example.com/audio.mp3')
