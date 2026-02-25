@@ -17,6 +17,7 @@ from .serializers import (
     AlbumSerializer, AlbumListSerializer,
     TagSerializer,
     MusicSerializer, MusicListSerializer, MusicUploadSerializer,
+    MusicPlaybackSerializer,
     PlaylistSerializer, PlaylistCreateSerializer, PlaylistAddTrackSerializer,
     RecentlyPlayedSerializer, FavoriteSerializer
 )
@@ -134,6 +135,8 @@ class MusicViewSet(viewsets.ModelViewSet):
             return MusicUploadSerializer
         elif self.action == 'list':
             return MusicListSerializer
+        elif self.action == 'playback':
+            return MusicPlaybackSerializer
         return MusicSerializer
     
     def get_permissions(self):
@@ -213,9 +216,31 @@ class MusicViewSet(viewsets.ModelViewSet):
                 broadcaster.total_plays += 1
                 broadcaster.save(update_fields=['total_plays'])
         
-        serializer = MusicSerializer(music, context={'request': request})
+    @action(detail=True, methods=['get'])
+    def playback(self, request, pk=None):
+        """Get playback info, track play and update recently played"""
+        music = self.get_object()
+        
+        # Increment play count
+        music.increment_play_count()
+        
+        # Track recently played for authenticated users
+        if request.user.is_authenticated:
+            RecentlyPlayed.objects.update_or_create(
+                user=request.user,
+                music=music,
+                defaults={'played_at': timezone.now()}
+            )
+            
+            # Update broadcaster stats
+            if music.uploaded_by and hasattr(music.uploaded_by, 'broadcaster_profile'):
+                broadcaster = music.uploaded_by.broadcaster_profile
+                broadcaster.total_plays += 1
+                broadcaster.save(update_fields=['total_plays'])
+        
+        serializer = MusicPlaybackSerializer(music, context={'request': request})
         return Response(success_response(
-            message="Music streaming started",
+            message="Playback info retrieved",
             data=serializer.data
         ))
 

@@ -369,3 +369,139 @@ class HomeFeedSerializer(serializers.Serializer):
     """Serializer for the entire normalized home feed"""
     sections = HomeSectionSerializer(many=True)
     music_map = serializers.DictField(child=NormalizedMusicSerializer())
+class MusicPlaybackSerializer(serializers.ModelSerializer):
+    """Specialized serializer for the playback API with requested format and localization."""
+    duration_seconds = serializers.IntegerField(source='duration')
+    artists = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
+    next_song_id = serializers.SerializerMethodField()
+    previous_song_id = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Music
+        fields = ['id', 'title', 'artists', 'is_favorite', 'duration_seconds', 'next_song_id', 'previous_song_id']
+
+    def get_title(self, obj):
+        """Return title in the current active language or default."""
+        # Django's get_language() should return the language from the locale middleware
+        from django.utils.translation import get_language
+        lang = get_language()
+        field_name = f'title_{lang}'
+        return getattr(obj, field_name, obj.title) or obj.title
+
+    def get_artists(self, obj):
+        """Return list of artists with localized names."""
+        from django.utils.translation import get_language
+        lang = get_language()
+        artists_data = []
+        for artist in obj.artist.all():
+            field_name = f'name_{lang}'
+            name = getattr(artist, field_name, artist.name) or artist.name
+            artists_data.append({'id': artist.id, 'name': name})
+        return artists_data
+
+    def get_is_favorite(self, obj):
+        """Check if current user has favorited this music."""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Favorite.objects.filter(user=request.user, music=obj).exists()
+        return False
+
+    def get_next_song_id(self, obj):
+        """
+        Get the ID of the next song based on the streaming context (album, playlist, artist, tag).
+        """
+        request = self.context.get('request')
+        if not request:
+            return self._get_default_next(obj)
+
+        album_id = request.query_params.get('album_id')
+        playlist_id = request.query_params.get('playlist_id')
+        artist_id = request.query_params.get('artist_id')
+        tag = request.query_params.get('tag')
+
+        if album_id:
+            next_song = Music.objects.filter(album_id=album_id, id__gt=obj.id).order_by('id').first()
+            if next_song: return next_song.id
+        elif playlist_id:
+            try:
+                playlist = Playlist.objects.get(id=playlist_id)
+                tracks = list(playlist.music_tracks.order_by('id').values_list('id', flat=True))
+                if obj.id in tracks:
+                    idx = tracks.index(obj.id)
+                    if idx + 1 < len(tracks):
+                        return tracks[idx+1]
+            except Playlist.DoesNotExist:
+                pass
+        elif artist_id:
+            next_song = Music.objects.filter(artist__id=artist_id, id__gt=obj.id).order_by('id').first()
+            if next_song: return next_song.id
+        elif tag:
+            next_song = Music.objects.filter(tags__name=tag, id__gt=obj.id).order_by('id').first()
+            if next_song: return next_song.id
+
+        return self._get_default_next(obj)
+
+    def _get_default_next(self, obj):
+        """Default fallback logic for next song."""
+        if obj.album:
+            next_song = Music.objects.filter(album=obj.album, id__gt=obj.id).order_by('id').first()
+            if next_song:
+                return next_song.id
+        
+        next_global = Music.objects.filter(id__gt=obj.id).order_by('id').first()
+        if next_global:
+            return next_global.id
+            
+        first_global = Music.objects.order_by('id').first()
+        return first_global.id if first_global else None
+
+    def get_previous_song_id(self, obj):
+        """
+        Get the ID of the previous song based on the streaming context.
+        """
+        request = self.context.get('request')
+        if not request:
+            return self._get_default_prev(obj)
+
+        album_id = request.query_params.get('album_id')
+        playlist_id = request.query_params.get('playlist_id')
+        artist_id = request.query_params.get('artist_id')
+        tag = request.query_params.get('tag')
+
+        if album_id:
+            prev_song = Music.objects.filter(album_id=album_id, id__lt=obj.id).order_by('-id').first()
+            if prev_song: return prev_song.id
+        elif playlist_id:
+            try:
+                playlist = Playlist.objects.get(id=playlist_id)
+                tracks = list(playlist.music_tracks.order_by('id').values_list('id', flat=True))
+                if obj.id in tracks:
+                    idx = tracks.index(obj.id)
+                    if idx > 0:
+                        return tracks[idx-1]
+            except Playlist.DoesNotExist:
+                pass
+        elif artist_id:
+            prev_song = Music.objects.filter(artist__id=artist_id, id__lt=obj.id).order_by('-id').first()
+            if prev_song: return prev_song.id
+        elif tag:
+            prev_song = Music.objects.filter(tags__name=tag, id__lt=obj.id).order_by('-id').first()
+            if prev_song: return prev_song.id
+
+        return self._get_default_prev(obj)
+
+    def _get_default_prev(self, obj):
+        """Default fallback logic for previous song."""
+        if obj.album:
+            prev_song = Music.objects.filter(album=obj.album, id__lt=obj.id).order_by('-id').first()
+            if prev_song:
+                return prev_song.id
+        
+        prev_global = Music.objects.filter(id__lt=obj.id).order_by('-id').first()
+        if prev_global:
+            return prev_global.id
+            
+        last_global = Music.objects.order_by('-id').first()
+        return last_global.id if last_global else None
