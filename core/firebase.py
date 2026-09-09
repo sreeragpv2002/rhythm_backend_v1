@@ -33,7 +33,12 @@ def initialize_firebase():
         else:
             cred_path = settings.FIREBASE_CREDENTIALS_PATH
             if not os.path.exists(cred_path):
-                raise FileNotFoundError(f"Firebase credentials not found at: {cred_path}")
+                # Automatic fallback for Render secret files (/etc/secrets/<filename>)
+                render_secret_path = os.path.join("/etc/secrets", os.path.basename(cred_path))
+                if os.path.exists(render_secret_path):
+                    cred_path = render_secret_path
+                else:
+                    raise FileNotFoundError(f"Firebase credentials not found at: {cred_path}")
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
 
