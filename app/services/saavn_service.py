@@ -426,4 +426,29 @@ class SaavnService:
         return sections
 
 
+    async def universal_search(self, query: str, limit: int = 10) -> dict[str, Any]:
+        """
+        Performs a universal search across songs, albums, artists, and playlists in a single call.
+        Uses JioSaavn's /api/search endpoint.
+        Endpoint: /api/search?query={query}&limit={limit}
+        """
+        cache_key = f"saavn_universal_search:{query}:{limit}"
+        cached = ttl_cache.get(cache_key)
+        if cached is not None:
+            logger.info(f"Serving universal search '{query}' from cache")
+            return cached
+
+        def _fetch():
+            data = self._get("/api/search", params={"query": query, "limit": limit})
+            if data and data.get("success") and "data" in data:
+                return data["data"]
+            return {}
+
+        result = await asyncio.to_thread(_fetch)
+        if result:
+            ttl_cache.set(cache_key, result, ttl=settings.HOME_CACHE_TTL_SECONDS)
+        return result
+
+
 saavn_service = SaavnService()
+
