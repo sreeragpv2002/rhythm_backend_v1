@@ -5,26 +5,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.models.home import HomeData, HomeItem, HomeResponse
 from app.models.language import LANGUAGE_METADATA
-from app.services.saavn_service import saavn_service
+from app.services.ytmusic_service import extract_image_url, ytmusic_service
 from core.firebase import get_recent_plays, get_user_languages, verify_user_exists
 
 router = APIRouter()
-
-
-def extract_image_url(image_data: Any) -> str:
-    """
-    Extracts the highest quality image URL string from JioSaavn/Firestore image data.
-    """
-    if isinstance(image_data, list) and len(image_data) > 0:
-        # JioSaavn lists qualities in ascending order (50x50, 150x150, 500x500); pick best quality
-        last = image_data[-1]
-        if isinstance(last, dict) and "url" in last:
-            return last["url"]
-        elif isinstance(last, str):
-            return last
-    elif isinstance(image_data, str):
-        return image_data
-    return ""
 
 
 def format_language_item(lang: str) -> HomeItem:
@@ -58,23 +42,30 @@ def format_home_item(item: dict[str, Any], default_type: str = "song") -> HomeIt
     - type
     - optional subtitle
     """
-    name = item.get("name") or item.get("title") or ""
-    image_url = extract_image_url(item.get("image"))
+    name = item.get("name") or item.get("title") or item.get("artist") or ""
+    image_url = extract_image_url(
+        item.get("image_url") or item.get("image") or item.get("thumbnails") or item.get("thumbnail")
+    )
     item_type = item.get("type") or default_type
 
-    # Extract optional artist / subtitle string if present
-    subtitle = None
-    if "artists" in item and isinstance(item["artists"], dict):
-        primary = item["artists"].get("primary", [])
-        if isinstance(primary, list) and len(primary) > 0:
-            subtitle = ", ".join(a.get("name", "") for a in primary if a.get("name"))
-    elif "artist" in item and isinstance(item["artist"], str):
-        subtitle = item["artist"]
+    subtitle = item.get("subtitle")
+    if not subtitle:
+        if "artists" in item and isinstance(item["artists"], dict):
+            primary = item["artists"].get("primary", [])
+            if isinstance(primary, list) and len(primary) > 0:
+                subtitle = ", ".join(a.get("name", "") for a in primary if isinstance(a, dict) and a.get("name"))
+        elif "artists" in item and isinstance(item["artists"], list) and len(item["artists"]) > 0:
+            subtitle = ", ".join(a.get("name", "") if isinstance(a, dict) else str(a) for a in item["artists"])
+        elif "artist" in item and isinstance(item["artist"], str):
+            subtitle = item["artist"]
+        elif "author" in item and isinstance(item["author"], str):
+            subtitle = item["author"]
 
     language = item.get("language")
+    item_id = str(item.get("id") or item.get("videoId") or item.get("browseId") or "")
 
     return HomeItem(
-        id=str(item.get("id", "")),
+        id=item_id,
         name=name,
         title=name,
         image=image_url,
@@ -96,10 +87,10 @@ async def get_home_data(
     - **languages**: User's selected languages from database formatted as HomeItem cards.
     - **user_languages**: User's selected language codes from Firestore database.
     - **recent_plays**: User's recently played songs retrieved from Firebase Firestore.
-    - **trending_songs**: Current trending songs from JioSaavn.
-    - **featured_playlists**: Top playlists from JioSaavn.
-    - **trending_albums**: Top albums from JioSaavn.
-    - **top_artists**: Top artists from JioSaavn.
+    - **trending_songs**: Current trending songs from YouTube Music.
+    - **featured_playlists**: Top playlists from YouTube Music.
+    - **trending_albums**: Top albums from YouTube Music.
+    - **top_artists**: Top artists from YouTube Music.
 
     Requires a valid `user_id` verified against Firebase.
     """
@@ -118,11 +109,11 @@ async def get_home_data(
     if not language and saved_langs:
         language = ", ".join(saved_langs)
 
-    # 3. Concurrently fetch Recent Plays from Firestore and Home Sections from Saavn API (cached 1 day)
+    # 3. Concurrently fetch Recent Plays from Firestore and Home Sections from YouTube Music API (cached 1 day)
     recent_plays_task = asyncio.to_thread(get_recent_plays, user_id, limit)
-    saavn_task = saavn_service.fetch_home_sections(language=language, limit=limit)
+    yt_task = ytmusic_service.fetch_home_sections(language=language, limit=limit)
 
-    recent_plays, saavn_sections = await asyncio.gather(recent_plays_task, saavn_task)
+    recent_plays, yt_sections = await asyncio.gather(recent_plays_task, yt_task)
 
     # Format user's languages as HomeItem cards
     formatted_languages = [format_language_item(lang) for lang in (saved_langs or [])]
@@ -132,10 +123,10 @@ async def get_home_data(
         user_languages=saved_langs or [],
         languages=formatted_languages,
         recent_plays=[format_home_item(i, "song") for i in (recent_plays or [])],
-        trending_songs=[format_home_item(i, "song") for i in saavn_sections.get("trending_songs", [])],
-        featured_playlists=[format_home_item(i, "playlist") for i in saavn_sections.get("featured_playlists", [])],
-        trending_albums=[format_home_item(i, "album") for i in saavn_sections.get("trending_albums", [])],
-        top_artists=[format_home_item(i, "artist") for i in saavn_sections.get("top_artists", [])],
+        trending_songs=[format_home_item(i, "song") for i in yt_sections.get("trending_songs", [])],
+        featured_playlists=[format_home_item(i, "playlist") for i in yt_sections.get("featured_playlists", [])],
+        trending_albums=[format_home_item(i, "album") for i in yt_sections.get("trending_albums", [])],
+        top_artists=[format_home_item(i, "artist") for i in yt_sections.get("top_artists", [])],
     )
 
     return HomeResponse(success=True, data=home_data)

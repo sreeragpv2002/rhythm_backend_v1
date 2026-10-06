@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from app.api.v1.endpoints.home import extract_image_url, format_home_item
-from app.services.saavn_service import saavn_service
+from app.services.ytmusic_service import ytmusic_service
 from core.firebase import (
     add_song_to_playlist,
     create_user_playlist,
@@ -27,11 +27,11 @@ class PlaylistService:
             )
 
     async def _fetch_and_prepare_song(self, song_id: str) -> dict[str, Any]:
-        song = await saavn_service.get_song_by_id(song_id)
+        song = await ytmusic_service.get_song_by_id(song_id)
         if not song:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Song with ID '{song_id}' not found on JioSaavn"
+                detail=f"Song with ID '{song_id}' not found on YouTube Music"
             )
         return song
 

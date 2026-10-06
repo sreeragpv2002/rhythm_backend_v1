@@ -4,39 +4,30 @@ from fastapi import APIRouter, Query
 
 from app.models.home import HomeItem
 from app.models.search import PlaylistsListResponse, SearchResponse, SearchResults, SongsListResponse
-from app.services.saavn_service import saavn_service
+from app.services.ytmusic_service import extract_image_url, ytmusic_service
 
 router = APIRouter()
 
 
-def _extract_image_url(image_data: Any) -> str:
-    """Extracts the highest-quality image URL from JioSaavn image data."""
-    if isinstance(image_data, list) and image_data:
-        last = image_data[-1]
-        if isinstance(last, dict) and "url" in last:
-            return last["url"]
-        elif isinstance(last, str):
-            return last
-    elif isinstance(image_data, str):
-        return image_data
-    return ""
-
-
 def _to_home_item(item: dict[str, Any], default_type: str = "song") -> HomeItem:
-    """Converts a raw Saavn search result item to a HomeItem."""
-    name = item.get("name") or item.get("title") or ""
-    image_url = _extract_image_url(item.get("image"))
+    """Converts a normalized or raw search result item to a HomeItem."""
+    name = item.get("name") or item.get("title") or item.get("artist") or ""
+    image_url = extract_image_url(
+        item.get("image_url") or item.get("image") or item.get("thumbnails") or item.get("thumbnail")
+    )
     item_type = item.get("type") or default_type
 
-    subtitle = (
-        item.get("description")
-        or item.get("primaryArtists")
-        or item.get("artist")
-        or None
-    )
+    subtitle = item.get("subtitle")
+    if not subtitle:
+        subtitle = (
+            item.get("description")
+            or item.get("artist")
+            or item.get("author")
+            or None
+        )
 
     return HomeItem(
-        id=str(item.get("id", "")),
+        id=str(item.get("id") or item.get("videoId") or item.get("browseId") or ""),
         name=name,
         title=name,
         image=image_url,
@@ -65,7 +56,7 @@ async def universal_search(
 ):
     """
     Performs a universal search across **songs, albums, artists, and playlists**
-    in a single request using the JioSaavn API (`saavn.sumit.co`).
+    in a single request using the YouTube Music API.
 
     Returns structured results grouped by category:
     - **songs** – matching song tracks
@@ -74,7 +65,7 @@ async def universal_search(
     - **playlists** – matching playlists
     - **top_query** – top query result (if available)
     """
-    raw = await saavn_service.universal_search(query=query, limit=limit)
+    raw = await ytmusic_service.universal_search(query=query, limit=limit)
 
     results = SearchResults(
         songs=_section_to_items(raw.get("songs"), "song"),
@@ -94,13 +85,12 @@ async def search_songs(
     language: str | None = Query(None, description="Optional language filter (e.g. 'hindi', 'english')"),
 ):
     """
-    Returns a flat list of **songs** matching the search query.
+    Returns a flat list of **songs** matching the search query from YouTube Music.
 
-    - Filters out compilation/playlist covers automatically.
     - Use `language` to narrow results to a specific language.
     - Results are cached for 1 day.
     """
-    raw = await saavn_service.search_songs(query=query, limit=limit, language=language)
+    raw = await ytmusic_service.search_songs(query=query, limit=limit, language=language)
     songs = [_to_home_item(item, "song") for item in raw]
     return SongsListResponse(
         success=True,
@@ -118,12 +108,12 @@ async def search_playlists(
     language: str | None = Query(None, description="Optional language filter (e.g. 'hindi', 'english')"),
 ):
     """
-    Returns a flat list of **playlists** matching the search query.
+    Returns a flat list of **playlists** matching the search query from YouTube Music.
 
     - Use `language` to narrow results to a specific language.
     - Results are cached for 1 day.
     """
-    raw = await saavn_service.search_playlists(query=query, limit=limit, language=language)
+    raw = await ytmusic_service.search_playlists(query=query, limit=limit, language=language)
     playlists = [_to_home_item(item, "playlist") for item in raw]
     return PlaylistsListResponse(
         success=True,

@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from app.services.saavn_service import saavn_service
+from app.services.ytmusic_service import ytmusic_service
 from core.firebase import get_recent_plays, save_recent_play, verify_user_exists
 
 
@@ -12,7 +12,7 @@ class RecentPlayService:
         """
         Records a song as recently played:
         1. Verifies user exists in Firebase.
-        2. Retrieves full song metadata from JioSaavn API by song_id.
+        2. Retrieves full song metadata from YouTube Music API by song_id.
         3. Saves/updates song in Firestore under users/{user_id}/recent_plays/{song_id}.
         """
         # 1. Verify user in Firebase
@@ -23,12 +23,12 @@ class RecentPlayService:
                 detail=f"User '{user_id}' not found in Firebase"
             )
 
-        # 2. Fetch song from JioSaavn API
-        song_data = await saavn_service.get_song_by_id(song_id)
+        # 2. Fetch song from YouTube Music API
+        song_data = await ytmusic_service.get_song_by_id(song_id)
         if not song_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Song with ID '{song_id}' not found on JioSaavn"
+                detail=f"Song with ID '{song_id}' not found on YouTube Music"
             )
 
         # 3. Save to Firestore

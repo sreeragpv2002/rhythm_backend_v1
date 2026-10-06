@@ -12,7 +12,7 @@ from core.firebase import get_firestore_db
 client = TestClient(app)
 
 TEST_USER_ID = "test_user_rhythm_qa"
-TEST_SONG_ID = "UPJYO3v0"  # Real song ID on JioSaavn: "Ishq de Fanniyar - Female"
+TEST_SONG_ID = "Kx7B-XvmFtE"  # Real song ID on YouTube Music: "Believer"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -277,4 +277,4 @@ def test_post_invalid_song_id():
     )
     assert response.status_code == 404
     data = response.json()
-    assert "not found on JioSaavn" in data["detail"]
+    assert "not found on YouTube Music" in data["detail"]

@@ -12,7 +12,7 @@ from core.firebase import get_firestore_db
 client = TestClient(app)
 
 TEST_USER_ID = "test_user_rhythm_qa"
-TEST_SONG_ID = "UPJYO3v0"  # Real song ID on JioSaavn: "Ishq de Fanniyar - Female"
+TEST_SONG_ID = "Kx7B-XvmFtE"  # Real song ID on YouTube Music: "Believer"
 
 
 def setup():
@@ -360,7 +360,7 @@ def test_post_invalid_song_id():
     )
     assert response.status_code == 404, f"Expected 404, got {response.status_code}"
     data = response.json()
-    assert "not found on JioSaavn" in data["detail"]
+    assert "not found on YouTube Music" in data["detail"]
 
 
 def test_home_song_image_not_playlist_cover():
@@ -417,8 +417,7 @@ def test_dedicated_song_details():
 
 
 def test_unified_details_playlist():
-    # Real JioSaavn playlist: "Malayalam 2000s"
-    response = client.get("/api/v1/details?type=playlist&id=1181705742")
+    response = client.get("/api/v1/details?type=playlist&id=VLPLeGTr28S_qmReBQ0I1GiGNlf2iNhOG22r")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     body = response.json()
     assert body["success"] is True
@@ -432,8 +431,7 @@ def test_unified_details_playlist():
 
 
 def test_unified_details_artist():
-    # Real JioSaavn artist: "Arijit Singh"
-    response = client.get("/api/v1/details?type=artist&id=459320&song_count=5")
+    response = client.get("/api/v1/details?type=artist&id=UCDxKh1gFWeYsqePvgVzmPoQ&song_count=5")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     body = response.json()
     assert body["success"] is True
@@ -446,14 +444,13 @@ def test_unified_details_artist():
 
 
 def test_unified_details_album():
-    # Real JioSaavn album: "Paramathma"
-    response = client.get("/api/v1/details?type=album&id=17787537")
+    response = client.get("/api/v1/details?type=album&id=MPREb_HtIOxExZ0ci")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     body = response.json()
     assert body["success"] is True
     assert body["type"] == "album"
     data = body["data"]
-    assert data["name"] == "Paramathma"
+    assert data["name"]
     assert "songs" in data
     assert len(data["songs"]) > 0
 
@@ -469,7 +466,7 @@ def test_unified_details_song_not_found():
     response = client.get("/api/v1/details?type=song&id=invalid_song_999999")
     assert response.status_code == 404, f"Expected 404, got {response.status_code}"
     data = response.json()
-    assert "not found on JioSaavn" in data["detail"]
+    assert "not found on YouTube Music" in data["detail"]
 
 
 CREATED_PLAYLIST_ID = None

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.api.v1.endpoints.home import extract_image_url, format_home_item
 from app.models.details import UnifiedDetailsResponse
-from app.services.saavn_service import saavn_service
+from app.services.ytmusic_service import ytmusic_service
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ def format_details_response(entity_type: str, data: dict[str, Any]) -> dict[str,
         for s in result["songs"]:
             if isinstance(s, dict):
                 item = dict(s)
-                item["image_url"] = extract_image_url(item.get("image"))
+                item["image_url"] = extract_image_url(item.get("image") or item.get("thumbnails"))
                 formatted_songs.append(item)
             else:
                 formatted_songs.append(s)
@@ -66,7 +66,7 @@ def format_details_response(entity_type: str, data: dict[str, Any]) -> dict[str,
         for s in result["topSongs"]:
             if isinstance(s, dict):
                 item = dict(s)
-                item["image_url"] = extract_image_url(item.get("image"))
+                item["image_url"] = extract_image_url(item.get("image") or item.get("thumbnails"))
                 formatted_top_songs.append(item)
             else:
                 formatted_top_songs.append(s)
@@ -87,11 +87,11 @@ async def fetch_details(
     canonical_type = normalize_type(entity_type)
 
     if canonical_type == "song":
-        data = await saavn_service.get_song_details_with_suggestions(entity_id, limit=limit)
+        data = await ytmusic_service.get_song_details_with_suggestions(entity_id, limit=limit)
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Song with ID '{entity_id}' not found on JioSaavn"
+                detail=f"Song with ID '{entity_id}' not found on YouTube Music"
             )
         return format_details_response(canonical_type, data)
 
@@ -101,29 +101,29 @@ async def fetch_details(
             data = await playlist_service.get_playlist_details(user_id=user_id, playlist_id=entity_id, limit=limit)
             return format_details_response(canonical_type, data)
 
-        data = await saavn_service.get_playlist_by_id(entity_id)
+        data = await ytmusic_service.get_playlist_by_id(entity_id, limit=limit)
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Playlist with ID '{entity_id}' not found on JioSaavn"
+                detail=f"Playlist with ID '{entity_id}' not found on YouTube Music"
             )
         return format_details_response(canonical_type, data)
 
     elif canonical_type == "artist":
-        data = await saavn_service.get_artist_by_id(entity_id, song_count=song_count, album_count=album_count)
+        data = await ytmusic_service.get_artist_by_id(entity_id, song_count=song_count, album_count=album_count)
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Artist with ID '{entity_id}' not found on JioSaavn"
+                detail=f"Artist with ID '{entity_id}' not found on YouTube Music"
             )
         return format_details_response(canonical_type, data)
 
     elif canonical_type == "album":
-        data = await saavn_service.get_album_by_id(entity_id)
+        data = await ytmusic_service.get_album_by_id(entity_id)
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Album with ID '{entity_id}' not found on JioSaavn"
+                detail=f"Album with ID '{entity_id}' not found on YouTube Music"
             )
         return format_details_response(canonical_type, data)
 
@@ -140,7 +140,7 @@ async def fetch_details(
 )
 async def get_details(
     type: str = Query(..., description="Entity type: 'song', 'playlist', 'artist', 'album'"),
-    id: str = Query(..., description="Unique entity ID on JioSaavn or user playlist ID"),
+    id: str = Query(..., description="Unique entity ID on YouTube Music or user playlist ID"),
     user_id: str | None = Query(None, description="Optional Firebase User ID (required for user-specific playlists like 'favorites')"),
     limit: int = Query(10, ge=1, le=50, description="Limit for suggestions or tracks (1-50)"),
     song_count: int = Query(10, ge=1, le=50, description="Artist top songs count (1-50)"),
@@ -149,7 +149,7 @@ async def get_details(
     """
     Single unified API endpoint to fetch detailed metadata by type:
     - **song**: Returns full song details + `suggested_songs` recommendation list.
-    - **playlist**: Returns full playlist details with track list and artwork (supports both JioSaavn playlists and user Firestore playlists).
+    - **playlist**: Returns full playlist details with track list and artwork (supports both YouTube Music playlists and user Firestore playlists).
     - **artist**: Returns full artist details with `top_songs`, `topAlbums`, and bio.
     - **album**: Returns full album details with track list and metadata.
     """
@@ -172,7 +172,7 @@ async def get_details(
 )
 async def get_details_by_path(
     type: str = Path(..., description="Entity type: 'song', 'playlist', 'artist', 'album'"),
-    id: str = Path(..., description="Unique entity ID on JioSaavn or user playlist ID"),
+    id: str = Path(..., description="Unique entity ID on YouTube Music or user playlist ID"),
     user_id: str | None = Query(None, description="Optional Firebase User ID (required for user-specific playlists like 'favorites')"),
     limit: int = Query(10, ge=1, le=50, description="Limit for suggestions or tracks (1-50)"),
     song_count: int = Query(10, ge=1, le=50, description="Artist top songs count (1-50)"),
@@ -202,7 +202,7 @@ albums_router = APIRouter()
 
 @songs_router.get("/{id}", summary="Get Song Details with Suggested Songs")
 async def get_song_by_id(
-    id: str = Path(..., description="Unique Song ID on JioSaavn"),
+    id: str = Path(..., description="Unique Song ID on YouTube Music"),
     limit: int = Query(10, ge=1, le=50, description="Limit for suggested songs (1-50)")
 ):
     """
@@ -214,7 +214,7 @@ async def get_song_by_id(
 
 @playlists_router.get("/{id}", summary="Get Playlist Details")
 async def get_playlist_by_id(
-    id: str = Path(..., description="Unique Playlist ID on JioSaavn")
+    id: str = Path(..., description="Unique Playlist ID on YouTube Music")
 ):
     """
     Returns full playlist details with track list and artwork.
@@ -225,7 +225,7 @@ async def get_playlist_by_id(
 
 @artists_router.get("/{id}", summary="Get Artist Details")
 async def get_artist_by_id(
-    id: str = Path(..., description="Unique Artist ID on JioSaavn"),
+    id: str = Path(..., description="Unique Artist ID on YouTube Music"),
     song_count: int = Query(10, ge=1, le=50, description="Artist top songs count (1-50)"),
     album_count: int = Query(10, ge=1, le=50, description="Artist top albums count (1-50)")
 ):
@@ -243,7 +243,7 @@ async def get_artist_by_id(
 
 @albums_router.get("/{id}", summary="Get Album Details")
 async def get_album_by_id(
-    id: str = Path(..., description="Unique Album ID on JioSaavn")
+    id: str = Path(..., description="Unique Album ID on YouTube Music")
 ):
     """
     Returns full album details with tracks and artwork.

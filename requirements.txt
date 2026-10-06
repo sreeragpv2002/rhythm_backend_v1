@@ -6,3 +6,4 @@ httpx>=0.28.0
 firebase-admin>=6.5.0
 grpcio>=1.68.0
 ruff>=0.8.0
+ytmusicapi>=1.12.0

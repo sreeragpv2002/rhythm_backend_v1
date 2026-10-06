@@ -1,6 +1,6 @@
 # Rhythm Backend 🎵
 
-A high-performance FastAPI backend for the **Rhythm** music streaming application. Powered by JioSaavn (via Sumit Kolhe API) with multi-language aggregation, caching, Firestore user state (recent plays, favorites, language preferences, custom playlists), and an automated CI/CD pipeline.
+A high-performance FastAPI backend for the **Rhythm** music streaming application. Powered by YouTube Music (via `ytmusicapi`) with multi-language aggregation, caching, Firestore user state (recent plays, favorites, language preferences, custom playlists), and an automated CI/CD pipeline.
 
 ---
 
@@ -9,9 +9,9 @@ A high-performance FastAPI backend for the **Rhythm** music streaming applicatio
 - **Personalized Home API (`GET /api/v1/home`)**:
   - Aggregates user recent plays, trending songs, featured playlists, trending albums, top artists, and language items.
   - **Clean Minimal Schema**: Compact cards with `id`, `name`, `title`, `image`, `image_url`, and `type`.
-  - **Accurate Song Covers**: Intelligent compilation/playlist filtering ensures real original track covers are displayed instead of playlist artwork.
+  - **Accurate Song Covers**: Intelligent metadata extraction ensures high-resolution track covers are displayed.
   - **Multi-Language Aggregation**: Interleaves tracks across selected languages (`malayalam`, `tamil`, `hindi`, `kannada`, `telugu`, `english`).
-  - **1-Day In-Memory Cache**: 24-hour TTL caching for JioSaavn home sections with instant user play invalidation.
+  - **1-Day In-Memory Cache**: 24-hour TTL caching for home sections with instant user play invalidation.
 
 - **Unified Details API (`GET /api/v1/details`)**:
   - Single polymorphic endpoint supporting `song`, `playlist`, `artist`, and `album`.
@@ -37,7 +37,7 @@ A high-performance FastAPI backend for the **Rhythm** music streaming applicatio
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+)
 - **Server**: Uvicorn (ASGI)
 - **Database**: Google Cloud Firestore & Firebase Admin SDK
-- **Data Source**: Sumit Kolhe JioSaavn API (`https://saavn.sumit.co`)
+- **Data Source**: YouTube Music via [`ytmusicapi`](https://ytmusicapi.readthedocs.io/)
 - **Linting & Code Quality**: Ruff
 - **CI/CD**: GitHub Actions
 
@@ -66,7 +66,7 @@ rhythm_backend/
 │   │   └── recent_play.py
 │   ├── services/                      # Business logic layer
 │   │   ├── playlist_service.py
-│   │   └── saavn_service.py
+│   │   └── ytmusic_service.py
 │   └── main.py                        # FastAPI application entrypoint
 ├── core/
 │   ├── cache.py                       # In-memory TTL cache (86400s)
