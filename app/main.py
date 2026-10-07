@@ -31,9 +31,11 @@ async def health_check():
 
     from app.services.stream_service import stream_service
     cookie_path = stream_service.get_cookie_file_path()
+    cookies_count = stream_service.get_cookies_count()
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "api_version": "v1",
         "cookies_loaded": bool(cookie_path and os.path.exists(cookie_path)),
+        "cookies_count": cookies_count,
     }

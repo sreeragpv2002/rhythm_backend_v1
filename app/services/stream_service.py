@@ -43,21 +43,50 @@ class StreamService:
 
     def __init__(self):
         self._cookie_file_path: str | None = None
+        self._cookies_count: int = 0
         self._init_cookie_file()
+
+    @staticmethod
+    def normalize_netscape_cookies(content: str) -> str:
+        """
+        Normalizes Netscape cookie format.
+        When cookies are pasted into web textareas (like Render Secret Files or Env Vars),
+        tab characters ('\\t') are frequently converted into spaces.
+        Python's MozillaCookieJar requires exact tab delimiters; otherwise lines
+        are silently ignored and 0 cookies are loaded.
+        """
+        cleaned = ["# Netscape HTTP Cookie File", "# http://curl.haxx.se/rfc/cookie_spec.html"]
+        for line in content.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            # If line already has at least 6 tabs, keep it
+            if s.count("\t") >= 6:
+                cleaned.append(s)
+                continue
+            # If space-separated, reassemble into tab-separated Netscape format
+            parts = s.split()
+            if len(parts) >= 7:
+                domain, flag, path, secure, expiration, name = parts[:6]
+                value = " ".join(parts[6:])
+                cleaned.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}")
+            else:
+                cleaned.append(s)
+        return "\n".join(cleaned) + "\n"
 
     def _create_writable_copy(self, source_path: str) -> str:
         """
-        Creates a writable copy of the cookie file in the system temp directory.
-        Render mounts secret files at /etc/secrets as read-only volumes.
-        yt-dlp attempts to write updated session tokens back to the cookie file,
-        causing [Errno 30] Read-only file system unless copied to a writable directory.
+        Creates a normalized, writable copy of the cookie file in system tempdir.
+        1. Fixes spaces -> tabs so MozillaCookieJar can parse them.
+        2. Solves Render read-only volume error ([Errno 30]).
         """
         try:
             target_path = os.path.join(tempfile.gettempdir(), "yt_cookies_writable.txt")
             with open(source_path, encoding="utf-8", errors="ignore") as src:
                 content = src.read()
+            normalized = self.normalize_netscape_cookies(content)
             with open(target_path, "w", encoding="utf-8") as dst:
-                dst.write(content)
+                dst.write(normalized)
             return target_path
         except Exception as e:
             logger.warning(f"Could not create writable copy of cookies from {source_path}: {e}")
@@ -91,18 +120,35 @@ class StreamService:
         if cookies_raw and cookies_raw.strip():
             try:
                 target_path = os.path.join(tempfile.gettempdir(), "yt_cookies_writable.txt")
+                normalized = self.normalize_netscape_cookies(cookies_raw.strip())
                 with open(target_path, "w", encoding="utf-8") as f:
-                    f.write(cookies_raw.strip())
+                    f.write(normalized)
                 self._cookie_file_path = target_path
                 logger.info("Loaded YouTube cookies from YOUTUBE_COOKIES environment variable")
             except Exception as e:
                 logger.error(f"Failed to create temporary cookies file: {e}")
+
+        # Count loaded cookies for diagnostics
+        if self._cookie_file_path and os.path.exists(self._cookie_file_path):
+            try:
+                import http.cookiejar
+                jar = http.cookiejar.MozillaCookieJar()
+                jar.load(self._cookie_file_path)
+                self._cookies_count = len(list(jar))
+                logger.info(f"Parsed {self._cookies_count} valid cookies from {self._cookie_file_path}")
+            except Exception as e:
+                logger.warning(f"Could not parse cookies count: {e}")
+                self._cookies_count = 0
 
     def get_cookie_file_path(self) -> str | None:
         """Returns the active cookie file path or re-checks paths if not currently set."""
         if not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
             self._init_cookie_file()
         return self._cookie_file_path
+
+    def get_cookies_count(self) -> int:
+        """Returns the count of parsed cookies."""
+        return getattr(self, "_cookies_count", 0)
 
     def _get_ydl_opts(self) -> dict[str, Any]:
         """Constructs yt-dlp options optimized for datacenter cloud environments."""
