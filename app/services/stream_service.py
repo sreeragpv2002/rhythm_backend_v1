@@ -99,6 +99,7 @@ class StreamService:
         if path and os.path.exists(path):
             self._cookie_file_path = self._create_writable_copy(path)
             logger.info(f"Loaded YouTube cookies from path: {path} (writable copy at {self._cookie_file_path})")
+            self._count_cookies()
             return
 
         # 2. Render default secret file path (/etc/secrets/cookies.txt)
@@ -106,6 +107,7 @@ class StreamService:
         if os.path.exists(render_path):
             self._cookie_file_path = self._create_writable_copy(render_path)
             logger.info(f"Loaded YouTube cookies from Render secret file: {render_path} (writable copy at {self._cookie_file_path})")
+            self._count_cookies()
             return
 
         # 3. Local fallback paths (credentials/cookies.txt or cookies.txt)
@@ -113,6 +115,7 @@ class StreamService:
             if os.path.exists(local_path):
                 self._cookie_file_path = self._create_writable_copy(local_path)
                 logger.info(f"Loaded YouTube cookies from local file: {local_path} (writable copy at {self._cookie_file_path})")
+                self._count_cookies()
                 return
 
         # 4. Inline env var string (YOUTUBE_COOKIES)
@@ -125,10 +128,15 @@ class StreamService:
                     f.write(normalized)
                 self._cookie_file_path = target_path
                 logger.info("Loaded YouTube cookies from YOUTUBE_COOKIES environment variable")
+                self._count_cookies()
+                return
             except Exception as e:
                 logger.error(f"Failed to create temporary cookies file: {e}")
 
-        # Count loaded cookies for diagnostics
+        self._count_cookies()
+
+    def _count_cookies(self) -> None:
+        """Counts loaded cookies for diagnostics and validity check."""
         if self._cookie_file_path and os.path.exists(self._cookie_file_path):
             try:
                 import http.cookiejar
@@ -139,6 +147,9 @@ class StreamService:
             except Exception as e:
                 logger.warning(f"Could not parse cookies count: {e}")
                 self._cookies_count = 0
+        else:
+            self._cookies_count = 0
+
 
     def get_cookie_file_path(self) -> str | None:
         """Returns the active cookie file path or re-checks paths if not currently set."""
@@ -166,8 +177,13 @@ class StreamService:
             "socket_timeout": 12,
         }
 
-        # Apply cookies if available
-        if self._cookie_file_path and os.path.exists(self._cookie_file_path):
+        # Apply cookies only if valid cookies were actually loaded (> 0).
+        # Passing an empty or 0-count cookie file triggers YouTube bot checks immediately.
+        if (
+            self._cookie_file_path
+            and os.path.exists(self._cookie_file_path)
+            and self.get_cookies_count() > 0
+        ):
             opts["cookiefile"] = self._cookie_file_path
 
         # Configure Proof-of-Origin (PO) Token provider (bgutil-ytdlp-pot-provider on localhost:4416)
@@ -180,7 +196,7 @@ class StreamService:
             opts["extractor_args"]["youtubepot-bgutilhttp"] = {
                 "base_url": [pot_base_url],
             }
-        elif not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
+        elif (not self._cookie_file_path or self.get_cookies_count() == 0):
             # Fallback when no cookies and no PO token provider: mobile android/ios clients
             opts["extractor_args"]["youtube"] = {
                 "player_client": ["android", "ios"],
@@ -193,6 +209,58 @@ class StreamService:
             opts["proxy"] = proxy
 
         return opts
+
+    def ensure_pot_provider_running(self) -> bool:
+        """Verifies or auto-starts the bgutil PO Token Provider server on localhost:4416."""
+        pot_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+        try:
+            r = httpx.get(f"{pot_url}/ping", timeout=1.0)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+
+        # Try to auto-start if /opt/bgutil/server exists
+        server_dir = "/opt/bgutil/server"
+        main_js = os.path.join(server_dir, "build", "main.js")
+        if not os.path.exists(main_js):
+            main_js = os.path.join(server_dir, "dist", "main.js")
+
+        if os.path.exists(main_js):
+            import subprocess
+            import time
+
+            logger.info("Auto-starting bgutil PO Token Provider from Python...")
+            try:
+                subprocess.Popen(
+                    ["node", main_js, "-H", "127.0.0.1", "-p", "4416"],
+                    cwd=server_dir,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                time.sleep(2.5)
+                r = httpx.get(f"{pot_url}/ping", timeout=1.5)
+                return r.status_code == 200
+            except Exception as e:
+                logger.error(f"Failed to auto-start PO Token Provider: {e}")
+        return False
+
+    def get_pot_provider_status(self) -> dict[str, Any]:
+        """Returns diagnostic status of the bgutil PO Token Provider HTTP server."""
+        pot_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+        try:
+            r = httpx.get(f"{pot_url}/ping", timeout=1.5)
+            if r.status_code == 200:
+                data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+                return {
+                    "running": True,
+                    "url": pot_url,
+                    "version": data.get("version", "unknown"),
+                }
+            return {"running": False, "url": pot_url, "error": f"HTTP {r.status_code}"}
+        except Exception as e:
+            return {"running": False, "url": pot_url, "error": f"{type(e).__name__}: {e}"}
+
 
     def _extract_stream_url_sync(self, url: str) -> str | None:
         """Extracts stream URL using yt-dlp."""

@@ -45,6 +45,10 @@ async def test_youtube(video_id: str):
     Test endpoint to verify direct stream extraction for a given YouTube video ID.
     Used for verifying PO Token Provider and Deno execution on Render.
     """
+    # Auto-ensure bgutil PO Token Provider is active
+    stream_service.ensure_pot_provider_running()
+    pot_status = stream_service.get_pot_provider_status()
+
     try:
         data = await asyncio.to_thread(_extract_test_info, video_id)
         return {
@@ -54,6 +58,8 @@ async def test_youtube(video_id: str):
             "audio_url": data.get("audio_url"),
             "duration": data.get("duration"),
             "format": data.get("format"),
+            "pot_provider": pot_status,
+            "cookies_count": stream_service.get_cookies_count(),
         }
     except Exception as e:
         logger.error(f"test-youtube failed for {video_id}: {e}")
@@ -61,4 +67,7 @@ async def test_youtube(video_id: str):
             "success": False,
             "video_id": video_id,
             "error": str(e),
+            "pot_provider": pot_status,
+            "cookies_count": stream_service.get_cookies_count(),
         }
+

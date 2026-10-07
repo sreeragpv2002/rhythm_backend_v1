@@ -32,6 +32,8 @@ async def health_check():
     from app.services.stream_service import stream_service
     cookie_path = stream_service.get_cookie_file_path()
     cookies_count = stream_service.get_cookies_count()
+    pot_status = stream_service.get_pot_provider_status()
+
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
@@ -39,7 +41,9 @@ async def health_check():
         "port": settings.PORT,
         "is_render": settings.IS_RENDER,
         "ytdlp_enabled": stream_service.should_run_ytdlp(),
-        "cookies_loaded": bool(cookie_path and os.path.exists(cookie_path)),
+        "pot_provider": pot_status,
+        "cookies_loaded": bool(cookie_path and os.path.exists(cookie_path) and cookies_count > 0),
         "cookies_count": cookies_count,
     }
+
 
