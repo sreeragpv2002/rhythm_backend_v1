@@ -161,7 +161,11 @@ class StreamService:
         """Returns the count of parsed cookies."""
         return getattr(self, "_cookies_count", 0)
 
-    def _get_ydl_opts(self) -> dict[str, Any]:
+    def _get_ydl_opts(
+        self,
+        use_cookies: bool = True,
+        player_client: str | list[str] | None = None,
+    ) -> dict[str, Any]:
         """Constructs yt-dlp options optimized for datacenter cloud environments."""
         if not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
             self._init_cookie_file()
@@ -177,30 +181,35 @@ class StreamService:
             "socket_timeout": 12,
         }
 
-        # Apply cookies only if valid cookies were actually loaded (> 0).
-        # Passing an empty or 0-count cookie file triggers YouTube bot checks immediately.
+        # Check if cookies are disabled via environment variable
+        cookies_globally_disabled = os.getenv("DISABLE_COOKIES", "false").lower() in ("true", "1", "yes")
+
+        # Apply cookies only if enabled and valid cookies were actually loaded (> 0).
         if (
-            self._cookie_file_path
+            use_cookies
+            and not cookies_globally_disabled
+            and self._cookie_file_path
             and os.path.exists(self._cookie_file_path)
             and self.get_cookies_count() > 0
         ):
             opts["cookiefile"] = self._cookie_file_path
 
-        # Configure Proof-of-Origin (PO) Token provider (bgutil-ytdlp-pot-provider on localhost:4416)
-        if "extractor_args" not in opts:
-            opts["extractor_args"] = {}
+        # Configure extractor args
+        opts["extractor_args"] = {}
 
+        # Configure Proof-of-Origin (PO) Token provider (bgutil-ytdlp-pot-provider on localhost:4416)
         pot_enabled = os.getenv("ENABLE_POT_PROVIDER", "true").lower() not in ("false", "0", "no")
         if pot_enabled:
             pot_base_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
             opts["extractor_args"]["youtubepot-bgutilhttp"] = {
                 "base_url": [pot_base_url],
             }
-        elif (not self._cookie_file_path or self.get_cookies_count() == 0):
-            # Fallback when no cookies and no PO token provider: mobile android/ios clients
+
+        # Player client override if specified
+        if player_client:
+            clients = [player_client] if isinstance(player_client, str) else list(player_client)
             opts["extractor_args"]["youtube"] = {
-                "player_client": ["android", "ios"],
-                "player_skip": ["webpage", "configs"],
+                "player_client": clients,
             }
 
         # Apply proxy if configured
@@ -261,31 +270,57 @@ class StreamService:
         except Exception as e:
             return {"running": False, "url": pot_url, "error": f"{type(e).__name__}: {e}"}
 
-
     def _extract_stream_url_sync(self, url: str) -> str | None:
-        """Extracts stream URL using yt-dlp."""
-        opts = self._get_ydl_opts()
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if not info:
-                    return None
-                if "entries" in info and info["entries"]:
-                    info = info["entries"][0]
+        """
+        Extracts stream URL using yt-dlp with multi-tier retry strategy:
+        1. Primary: using current configuration (cookies if available + PO token provider).
+        2. Guest PO Token fallback: if cookies failed with bot check, retry in clean guest mode (PO token only).
+        3. Mobile client fallback: retry with mobile client cascade (ios, android).
+        """
+        attempts = []
+        # Attempt 1: Primary (with cookies if available)
+        attempts.append(("primary", self._get_ydl_opts(use_cookies=True)))
 
-                direct_url = info.get("url")
-                if direct_url:
-                    return direct_url
+        # Attempt 2: If cookies were active, retry WITHOUT cookies (clean guest mode with PO token)
+        if self.get_cookies_count() > 0:
+            attempts.append(("guest_po_token", self._get_ydl_opts(use_cookies=False)))
 
-                formats = info.get("formats", [])
-                for fmt in reversed(formats):
-                    if fmt.get("acodec") != "none" and fmt.get("url"):
-                        return fmt["url"]
+        # Attempt 3: Mobile client cascade
+        attempts.append(("mobile_client", self._get_ydl_opts(use_cookies=False, player_client=["ios", "android"])))
 
-                return None
-        except Exception as e:
-            logger.warning(f"yt-dlp extraction failed for {url} (expected on datacenter IPs without cookies): {e}")
-            return None
+        last_error = None
+        for strategy_name, opts in attempts:
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if not info:
+                        continue
+                    if "entries" in info and info["entries"]:
+                        info = info["entries"][0]
+
+                    direct_url = info.get("url")
+                    if not direct_url:
+                        formats = info.get("formats", [])
+                        for fmt in reversed(formats):
+                            if fmt.get("acodec") != "none" and fmt.get("url"):
+                                direct_url = fmt["url"]
+                                break
+
+                    if direct_url:
+                        if strategy_name != "primary":
+                            logger.info(f"Stream extraction succeeded using '{strategy_name}' fallback for {url}")
+                        return direct_url
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                logger.warning(f"yt-dlp strategy '{strategy_name}' failed for {url}: {err_str}")
+                # Only proceed to next strategy if it's a bot/auth/format issue
+                if "not a bot" not in err_str and "Requested format is not available" not in err_str and "Sign in" not in err_str:
+                    break
+
+        logger.error(f"All yt-dlp extraction strategies failed for {url}: {last_error}")
+        return None
+
 
     async def _try_piped_instance(self, client: httpx.AsyncClient, base_url: str, song_id: str) -> str | None:
         try:
