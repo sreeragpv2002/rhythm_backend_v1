@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+
 def main():
     client = TestClient(app)
     res = client.get("/api/v1/songs/HaU84TfH9nU?limit=50")

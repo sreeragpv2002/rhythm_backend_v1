@@ -54,7 +54,7 @@ class StreamService:
         """
         try:
             target_path = os.path.join(tempfile.gettempdir(), "yt_cookies_writable.txt")
-            with open(source_path, "r", encoding="utf-8", errors="ignore") as src:
+            with open(source_path, encoding="utf-8", errors="ignore") as src:
                 content = src.read()
             with open(target_path, "w", encoding="utf-8") as dst:
                 dst.write(content)
@@ -117,28 +117,23 @@ class StreamService:
             "noplaylist": True,
             "extract_flat": False,
             "cachedir": False,
-            # Use android and ios player clients to bypass desktop web bot checkpoints on cloud IPs
-            "extractor_args": {
+            "socket_timeout": 12,
+        }
+
+        # Apply cookies if available
+        if self._cookie_file_path and os.path.exists(self._cookie_file_path):
+            opts["cookiefile"] = self._cookie_file_path
+            # Allow yt-dlp to use its smart multi-client cascade (visionos, mweb, etc.)
+            # Do not force web/android which triggers cloud datacenter bot challenges
+        else:
+            # Fallback when no cookies: use mobile android/ios clients
+            opts["extractor_args"] = {
                 "youtube": {
                     "player_client": ["android", "ios"],
                     "player_skip": ["webpage", "configs"],
                 },
                 "youtubemusic": {
                     "player_client": ["android", "ios"],
-                },
-            },
-        }
-
-        # Apply cookies if available
-        if self._cookie_file_path and os.path.exists(self._cookie_file_path):
-            opts["cookiefile"] = self._cookie_file_path
-            # When browser cookies are provided, allow web and android clients
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["web", "android"],
-                },
-                "youtubemusic": {
-                    "player_client": ["web", "android"],
                 },
             }
 

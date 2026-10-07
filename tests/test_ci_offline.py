@@ -182,12 +182,15 @@ class TestCIOffline(unittest.TestCase):
             self.assertNotIn("mp3", call_args, "mp3 must not be saved to Firestore in playlists")
 
     def test_stream_service_format_configuration(self):
-        from app.services.stream_service import stream_service
-        opts = stream_service._get_ydl_opts()
-        self.assertIn("m4a", opts.get("format", ""))
-        self.assertTrue(opts.get("skip_download"))
-        self.assertTrue(opts.get("noplaylist"))
-        self.assertIn("android", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
+        from app.services.stream_service import StreamService
+        with patch.object(StreamService, "_init_cookie_file"):
+            svc = StreamService()
+            svc._cookie_file_path = None
+            opts = svc._get_ydl_opts()
+            self.assertIn("m4a", opts.get("format", ""))
+            self.assertTrue(opts.get("skip_download"))
+            self.assertTrue(opts.get("noplaylist"))
+            self.assertIn("android", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
 
     def test_stream_service_cookie_detection(self):
         from app.services.stream_service import StreamService
@@ -198,7 +201,7 @@ class TestCIOffline(unittest.TestCase):
             self.assertTrue(os.path.exists(svc._cookie_file_path))
             opts = svc._get_ydl_opts()
             self.assertEqual(opts.get("cookiefile"), svc._cookie_file_path)
-            self.assertIn("web", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
+            self.assertNotIn("extractor_args", opts)
 
 
 if __name__ == "__main__":
