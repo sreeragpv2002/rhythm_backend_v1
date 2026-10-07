@@ -12,13 +12,18 @@ services:
       - key: RENDER
         value: "true"
       - key: ENABLE_SERVER_YTDLP
-        value: "false"
+        value: "true"
+      - key: ENABLE_POT_PROVIDER
+        value: "true"
+      - key: POT_PROVIDER_URL
+        value: "http://127.0.0.1:4416"
       - key: SAAVN_BASE_URL
         value: https://saavn.sumit.co
       - key: HOME_CACHE_TTL_SECONDS
         value: "86400"
       - key: GRPC_DNS_RESOLVER
         value: native
+
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false
       - key: YOUTUBE_COOKIES

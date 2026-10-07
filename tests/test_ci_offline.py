@@ -45,9 +45,11 @@ class TestCIOffline(unittest.TestCase):
             "/api/v1/user-playlists/{playlist_id}",
             "/api/v1/user-playlists/{playlist_id}/songs",
             "/api/v1/user-playlists/{playlist_id}/songs/{song_id}",
+            "/api/v1/test-youtube/{video_id}",
         ]
         for path in expected_paths:
             self.assertIn(path, registered_paths, f"Expected path {path} not in OpenAPI schema")
+
 
     def test_parse_languages(self):
         self.assertEqual(parse_languages(""), [])
@@ -190,46 +192,58 @@ class TestCIOffline(unittest.TestCase):
             self.assertIn("m4a", opts.get("format", ""))
             self.assertTrue(opts.get("skip_download"))
             self.assertTrue(opts.get("noplaylist"))
-            self.assertIn("android", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
+            # Default with POT provider enabled attaches youtubepot-bgutilhttp
+            self.assertIn("youtubepot-bgutilhttp", opts.get("extractor_args", {}))
 
     def test_stream_service_cookie_detection(self):
         from app.services.stream_service import StreamService
-        # Test inline env var
-        with patch.dict(os.environ, {"YOUTUBE_COOKIES": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1800000000\tSID\ttest"}):
+        # Test inline env var with POT provider disabled
+        with patch.dict(os.environ, {
+            "YOUTUBE_COOKIES": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1800000000\tSID\ttest",
+            "ENABLE_POT_PROVIDER": "false"
+        }):
             svc = StreamService()
             self.assertIsNotNone(svc._cookie_file_path)
             self.assertTrue(os.path.exists(svc._cookie_file_path))
             opts = svc._get_ydl_opts()
             self.assertEqual(opts.get("cookiefile"), svc._cookie_file_path)
-            self.assertNotIn("extractor_args", opts)
+            self.assertEqual(opts.get("extractor_args"), {})
 
     def test_stream_service_environment_routing(self):
         from app.services.stream_service import StreamService
         svc = StreamService()
 
-        # 1. Localhost default (RENDER not set): yt-dlp should run
+        # 1. Default (local or cloud with PO Token Provider): yt-dlp enabled
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("RENDER", None)
+            os.environ.pop("ENABLE_YTDLP", None)
             os.environ.pop("ENABLE_SERVER_YTDLP", None)
-            os.environ.pop("PROXY_URL", None)
             self.assertTrue(svc.should_run_ytdlp())
 
-        # 2. Render cloud environment: yt-dlp should be skipped by default
-        with patch.dict(os.environ, {"RENDER": "true"}, clear=False):
-            os.environ.pop("ENABLE_SERVER_YTDLP", None)
-            os.environ.pop("PROXY_URL", None)
+        # 2. Explicit server disable: yt-dlp disabled
+        with patch.dict(os.environ, {"ENABLE_SERVER_YTDLP": "false"}):
             self.assertFalse(svc.should_run_ytdlp())
 
-        # 3. Render cloud environment with proxy: yt-dlp should run via proxy
-        with patch.dict(os.environ, {"RENDER": "true", "PROXY_URL": "http://user:pass@proxy.com:8080"}):
-            self.assertTrue(svc.should_run_ytdlp())
+        # 3. Global disable: yt-dlp disabled
+        with patch.dict(os.environ, {"ENABLE_YTDLP": "false"}):
+            self.assertFalse(svc.should_run_ytdlp())
 
-        # 4. Render cloud environment with explicit ENABLE_SERVER_YTDLP override
-        with patch.dict(os.environ, {"RENDER": "true", "ENABLE_SERVER_YTDLP": "true"}):
-            os.environ.pop("PROXY_URL", None)
-            self.assertTrue(svc.should_run_ytdlp())
+    def test_test_youtube_endpoint(self):
+        with patch("app.api.v1.endpoints.test_youtube._extract_test_info", return_value={
+            "title": "Adyam Thammil",
+            "audio_url": "https://example.com/audio.m4a",
+            "duration": 240,
+            "format": "m4a",
+        }):
+            response = self.client.get("/api/v1/test-youtube/HaU84TfH9nU")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data.get("video_id"), "HaU84TfH9nU")
+            self.assertEqual(data.get("title"), "Adyam Thammil")
+            self.assertEqual(data.get("audio_url"), "https://example.com/audio.m4a")
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

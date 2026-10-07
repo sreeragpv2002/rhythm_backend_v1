@@ -169,18 +169,22 @@ class StreamService:
         # Apply cookies if available
         if self._cookie_file_path and os.path.exists(self._cookie_file_path):
             opts["cookiefile"] = self._cookie_file_path
-            # Allow yt-dlp to use its smart multi-client cascade (visionos, mweb, etc.)
-            # Do not force web/android which triggers cloud datacenter bot challenges
-        else:
-            # Fallback when no cookies: use mobile android/ios clients
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["android", "ios"],
-                    "player_skip": ["webpage", "configs"],
-                },
-                "youtubemusic": {
-                    "player_client": ["android", "ios"],
-                },
+
+        # Configure Proof-of-Origin (PO) Token provider (bgutil-ytdlp-pot-provider on localhost:4416)
+        if "extractor_args" not in opts:
+            opts["extractor_args"] = {}
+
+        pot_enabled = os.getenv("ENABLE_POT_PROVIDER", "true").lower() not in ("false", "0", "no")
+        if pot_enabled:
+            pot_base_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+            opts["extractor_args"]["youtubepot-bgutilhttp"] = {
+                "base_url": [pot_base_url],
+            }
+        elif not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
+            # Fallback when no cookies and no PO token provider: mobile android/ios clients
+            opts["extractor_args"]["youtube"] = {
+                "player_client": ["android", "ios"],
+                "player_skip": ["webpage", "configs"],
             }
 
         # Apply proxy if configured
@@ -275,26 +279,16 @@ class StreamService:
     def should_run_ytdlp(self) -> bool:
         """
         Determines whether yt-dlp should be executed.
-        - On localhost (local machine port / development): runs yt-dlp natively.
-        - On server (Render cloud environment): skips yt-dlp by default to prevent YouTube
-          datacenter IP blocking, immediately routing to decentralized streaming fallbacks (Piped & Invidious).
-        - Can be forced on cloud server by setting ENABLE_SERVER_YTDLP=true or providing PROXY_URL.
+        - Enabled by default on both localhost and Render (with bgutil PO Token Provider running on internal port 4416).
+        - Can be explicitly disabled via ENABLE_YTDLP=false or ENABLE_SERVER_YTDLP=false.
         """
         if os.getenv("ENABLE_YTDLP", "true").lower() in ("false", "0", "no"):
             return False
 
-        # If a proxy is configured, yt-dlp can safely route requests through the proxy even on servers
-        proxy = os.getenv("PROXY_URL") or os.getenv("YOUTUBE_PROXY") or os.getenv("HTTPS_PROXY")
-        if proxy:
-            return True
+        if os.getenv("ENABLE_SERVER_YTDLP", "true").lower() in ("false", "0", "no"):
+            return False
 
-        # Check if running on Render
-        is_render = os.getenv("RENDER", "").lower() in ("true", "1")
-        if is_render:
-            return os.getenv("ENABLE_SERVER_YTDLP", "false").lower() in ("true", "1")
-
-        # Local development / localhost: always run yt-dlp by default
-        return os.getenv("ENABLE_SERVER_YTDLP", "true").lower() in ("true", "1")
+        return True
 
     async def get_audio_stream_url(self, song_id: str, song_url: str | None = None) -> str | None:
         """
