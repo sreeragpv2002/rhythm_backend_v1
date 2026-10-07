@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.api.v1.endpoints.home import extract_image_url, format_home_item
 from app.models.details import UnifiedDetailsResponse
+from app.services.stream_service import stream_service
 from app.services.ytmusic_service import ytmusic_service
 
 router = APIRouter()
@@ -93,7 +94,10 @@ async def fetch_details(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Song with ID '{entity_id}' not found on YouTube Music"
             )
-        return format_details_response(canonical_type, data)
+        formatted = format_details_response(canonical_type, data)
+        mp3_url = await stream_service.get_audio_stream_url(song_id=entity_id, song_url=data.get("url"))
+        formatted["mp3"] = mp3_url
+        return formatted
 
     elif canonical_type == "playlist":
         if (entity_id == "favorites" or entity_id.startswith("pl_")) and user_id:
@@ -162,7 +166,12 @@ async def get_details(
         song_count=song_count,
         album_count=album_count
     )
-    return UnifiedDetailsResponse(success=True, type=canonical_type, data=data)
+    return UnifiedDetailsResponse(
+        success=True,
+        type=canonical_type,
+        data=data,
+        mp3=data.get("mp3") if canonical_type == "song" else None
+    )
 
 
 @router.get(
@@ -190,7 +199,12 @@ async def get_details_by_path(
         song_count=song_count,
         album_count=album_count
     )
-    return UnifiedDetailsResponse(success=True, type=canonical_type, data=data)
+    return UnifiedDetailsResponse(
+        success=True,
+        type=canonical_type,
+        data=data,
+        mp3=data.get("mp3") if canonical_type == "song" else None
+    )
 
 
 # Dedicated routers for convenient direct resource access
@@ -209,7 +223,7 @@ async def get_song_by_id(
     Returns full song details along with a suggested songs list.
     """
     data = await fetch_details(entity_type="song", entity_id=id, limit=limit)
-    return UnifiedDetailsResponse(success=True, type="song", data=data)
+    return UnifiedDetailsResponse(success=True, type="song", data=data, mp3=data.get("mp3"))
 
 
 @playlists_router.get("/{id}", summary="Get Playlist Details")

@@ -20,6 +20,7 @@ class SongDetailsData(BaseModel):
     has_lyrics: bool | None = False
     lyrics_id: str | None = None
     url: str | None = None
+    mp3: str | None = Field(default=None, description="Temporary direct audio stream URL for streaming (yt-dlp)")
     copyright: str | None = None
     album: dict[str, Any] | None = None
     artists: dict[str, Any] | None = None
@@ -33,3 +34,4 @@ class UnifiedDetailsResponse(BaseModel):
     success: bool = True
     type: str = Field(..., description="Entity type: song, playlist, artist, album")
     data: dict[str, Any] = Field(..., description="Detailed entity data including suggestions or tracks")
+    mp3: str | None = Field(default=None, description="Temporary direct audio stream URL for songs")

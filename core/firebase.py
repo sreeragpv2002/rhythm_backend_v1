@@ -104,11 +104,12 @@ def save_recent_play(user_id: str, song_data: dict[str, Any]) -> dict[str, Any]:
 
     doc_ref = db.collection("users").document(user_id).collection("recent_plays").document(song_id)
 
-    # Prepare document data
+    # Prepare document data (exclude temporary URLs such as mp3 from permanent DB storage)
     data_to_store = {
         **song_data,
         "played_at": firestore.SERVER_TIMESTAMP,
     }
+    data_to_store.pop("mp3", None)
 
     doc_ref.set(data_to_store, merge=True)
 
@@ -362,6 +363,7 @@ def add_song_to_playlist(user_id: str, playlist_id: str, song_data: dict[str, An
         "id": str(song_id),
         "added_at": firestore.SERVER_TIMESTAMP,
     }
+    data_to_store.pop("mp3", None)
     song_ref.set(data_to_store, merge=True)
 
     # Update playlist metadata
