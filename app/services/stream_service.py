@@ -47,12 +47,28 @@ class StreamService:
 
     def _init_cookie_file(self) -> None:
         """Configures cookies from secret file path or inline environment variable string."""
+        # 1. Custom path from env var
         path = os.getenv("YOUTUBE_COOKIES_PATH")
         if path and os.path.exists(path):
             self._cookie_file_path = path
             logger.info(f"Loaded YouTube cookies from path: {path}")
             return
 
+        # 2. Render default secret file path (/etc/secrets/cookies.txt)
+        render_path = "/etc/secrets/cookies.txt"
+        if os.path.exists(render_path):
+            self._cookie_file_path = render_path
+            logger.info(f"Loaded YouTube cookies from Render secret file: {render_path}")
+            return
+
+        # 3. Local fallback paths (credentials/cookies.txt or cookies.txt)
+        for local_path in ["credentials/cookies.txt", "cookies.txt"]:
+            if os.path.exists(local_path):
+                self._cookie_file_path = local_path
+                logger.info(f"Loaded YouTube cookies from local file: {local_path}")
+                return
+
+        # 4. Inline env var string (YOUTUBE_COOKIES)
         cookies_raw = os.getenv("YOUTUBE_COOKIES")
         if cookies_raw and cookies_raw.strip():
             try:
