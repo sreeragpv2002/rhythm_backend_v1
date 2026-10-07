@@ -45,37 +45,55 @@ class StreamService:
         self._cookie_file_path: str | None = None
         self._init_cookie_file()
 
+    def _create_writable_copy(self, source_path: str) -> str:
+        """
+        Creates a writable copy of the cookie file in the system temp directory.
+        Render mounts secret files at /etc/secrets as read-only volumes.
+        yt-dlp attempts to write updated session tokens back to the cookie file,
+        causing [Errno 30] Read-only file system unless copied to a writable directory.
+        """
+        try:
+            target_path = os.path.join(tempfile.gettempdir(), "yt_cookies_writable.txt")
+            with open(source_path, "r", encoding="utf-8", errors="ignore") as src:
+                content = src.read()
+            with open(target_path, "w", encoding="utf-8") as dst:
+                dst.write(content)
+            return target_path
+        except Exception as e:
+            logger.warning(f"Could not create writable copy of cookies from {source_path}: {e}")
+            return source_path
+
     def _init_cookie_file(self) -> None:
         """Configures cookies from secret file path or inline environment variable string."""
         # 1. Custom path from env var
         path = os.getenv("YOUTUBE_COOKIES_PATH")
         if path and os.path.exists(path):
-            self._cookie_file_path = path
-            logger.info(f"Loaded YouTube cookies from path: {path}")
+            self._cookie_file_path = self._create_writable_copy(path)
+            logger.info(f"Loaded YouTube cookies from path: {path} (writable copy at {self._cookie_file_path})")
             return
 
         # 2. Render default secret file path (/etc/secrets/cookies.txt)
         render_path = "/etc/secrets/cookies.txt"
         if os.path.exists(render_path):
-            self._cookie_file_path = render_path
-            logger.info(f"Loaded YouTube cookies from Render secret file: {render_path}")
+            self._cookie_file_path = self._create_writable_copy(render_path)
+            logger.info(f"Loaded YouTube cookies from Render secret file: {render_path} (writable copy at {self._cookie_file_path})")
             return
 
         # 3. Local fallback paths (credentials/cookies.txt or cookies.txt)
         for local_path in ["credentials/cookies.txt", "cookies.txt"]:
             if os.path.exists(local_path):
-                self._cookie_file_path = local_path
-                logger.info(f"Loaded YouTube cookies from local file: {local_path}")
+                self._cookie_file_path = self._create_writable_copy(local_path)
+                logger.info(f"Loaded YouTube cookies from local file: {local_path} (writable copy at {self._cookie_file_path})")
                 return
 
         # 4. Inline env var string (YOUTUBE_COOKIES)
         cookies_raw = os.getenv("YOUTUBE_COOKIES")
         if cookies_raw and cookies_raw.strip():
             try:
-                temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
-                temp_file.write(cookies_raw.strip())
-                temp_file.close()
-                self._cookie_file_path = temp_file.name
+                target_path = os.path.join(tempfile.gettempdir(), "yt_cookies_writable.txt")
+                with open(target_path, "w", encoding="utf-8") as f:
+                    f.write(cookies_raw.strip())
+                self._cookie_file_path = target_path
                 logger.info("Loaded YouTube cookies from YOUTUBE_COOKIES environment variable")
             except Exception as e:
                 logger.error(f"Failed to create temporary cookies file: {e}")
@@ -98,6 +116,7 @@ class StreamService:
             "skip_download": True,
             "noplaylist": True,
             "extract_flat": False,
+            "cachedir": False,
             # Use android and ios player clients to bypass desktop web bot checkpoints on cloud IPs
             "extractor_args": {
                 "youtube": {
