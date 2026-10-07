@@ -66,6 +66,9 @@ class StreamService:
 
     def _get_ydl_opts(self) -> dict[str, Any]:
         """Constructs yt-dlp options optimized for datacenter cloud environments."""
+        if not self._cookie_file_path:
+            self._init_cookie_file()
+
         opts: dict[str, Any] = {
             "format": "bestaudio[ext=m4a]/bestaudio/best",
             "quiet": True,
@@ -76,9 +79,12 @@ class StreamService:
             # Use android and ios player clients to bypass desktop web bot checkpoints on cloud IPs
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "mweb"],
+                    "player_client": ["android", "ios"],
                     "player_skip": ["webpage", "configs"],
-                }
+                },
+                "youtubemusic": {
+                    "player_client": ["android", "ios"],
+                },
             },
         }
 
@@ -118,44 +124,61 @@ class StreamService:
             logger.warning(f"yt-dlp extraction failed for {url} (expected on datacenter IPs without cookies): {e}")
             return None
 
+    async def _try_piped_instance(self, client: httpx.AsyncClient, base_url: str, song_id: str) -> str | None:
+        try:
+            resp = await client.get(
+                f"{base_url}/streams/{song_id}",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                audio_streams = data.get("audioStreams", [])
+                for stream in audio_streams:
+                    if stream.get("format") == "M4A" and stream.get("url"):
+                        return stream["url"]
+                if audio_streams and audio_streams[0].get("url"):
+                    return audio_streams[0]["url"]
+        except Exception:
+            pass
+        return None
+
     async def _fetch_from_piped_fallback(self, song_id: str) -> str | None:
-        """Fallback to decentralized Piped API instances if yt-dlp is blocked on the server's IP."""
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for base_url in PIPED_INSTANCES:
-                try:
-                    resp = await client.get(f"{base_url}/streams/{song_id}", headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        audio_streams = data.get("audioStreams", [])
-                        if audio_streams:
-                            # Prefer M4A for native Flutter just_audio playback on iOS & Android
-                            for stream in audio_streams:
-                                if stream.get("format") == "M4A" and stream.get("url"):
-                                    return stream["url"]
-                            return audio_streams[0].get("url")
-                except Exception as e:
-                    logger.debug(f"Piped instance {base_url} failed for {song_id}: {e}")
+        """Concurrent fallback to decentralized Piped API instances if yt-dlp is blocked on the server's IP."""
+        async with httpx.AsyncClient(timeout=3.5) as client:
+            tasks = [self._try_piped_instance(client, url, song_id) for url in PIPED_INSTANCES[:3]]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, str) and res.startswith("http"):
+                    return res
+        return None
+
+    async def _try_invidious_instance(self, client: httpx.AsyncClient, base_url: str, song_id: str) -> str | None:
+        try:
+            resp = await client.get(
+                f"{base_url}/api/v1/videos/{song_id}",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                adaptive_formats = data.get("adaptiveFormats", [])
+                for fmt in adaptive_formats:
+                    if fmt.get("type", "").startswith("audio/mp4") and fmt.get("url"):
+                        return fmt["url"]
+                for fmt in adaptive_formats:
+                    if fmt.get("type", "").startswith("audio/") and fmt.get("url"):
+                        return fmt["url"]
+        except Exception:
+            pass
         return None
 
     async def _fetch_from_invidious_fallback(self, song_id: str) -> str | None:
-        """Fallback to Invidious instances if Piped is unavailable."""
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for base_url in INVIDIOUS_INSTANCES:
-                try:
-                    resp = await client.get(f"{base_url}/api/v1/videos/{song_id}", headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        adaptive_formats = data.get("adaptiveFormats", [])
-                        for fmt in adaptive_formats:
-                            if fmt.get("type", "").startswith("audio/mp4") and fmt.get("url"):
-                                return fmt["url"]
-                        for fmt in adaptive_formats:
-                            if fmt.get("type", "").startswith("audio/") and fmt.get("url"):
-                                return fmt["url"]
-                except Exception as e:
-                    logger.debug(f"Invidious instance {base_url} failed for {song_id}: {e}")
+        """Concurrent fallback to Invidious instances if Piped is unavailable."""
+        async with httpx.AsyncClient(timeout=3.5) as client:
+            tasks = [self._try_invidious_instance(client, url, song_id) for url in INVIDIOUS_INSTANCES[:3]]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, str) and res.startswith("http"):
+                    return res
         return None
 
     async def get_audio_stream_url(self, song_id: str, song_url: str | None = None) -> str | None:
@@ -173,10 +196,11 @@ class StreamService:
         if cached_url:
             return cached_url
 
+        # Prefer standard youtube.com watch URL for yt-dlp extractor compatibility
         target_url = (
-            song_url
-            if (song_url and (song_url.startswith("http://") or song_url.startswith("https://")))
-            else f"https://www.youtube.com/watch?v={clean_id}"
+            f"https://www.youtube.com/watch?v={clean_id}"
+            if clean_id
+            else (song_url or "")
         )
 
         # 1. Primary: yt-dlp (with Android/iOS client and optional cookies/proxy)
