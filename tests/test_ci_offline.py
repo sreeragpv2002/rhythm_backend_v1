@@ -203,6 +203,33 @@ class TestCIOffline(unittest.TestCase):
             self.assertEqual(opts.get("cookiefile"), svc._cookie_file_path)
             self.assertNotIn("extractor_args", opts)
 
+    def test_stream_service_environment_routing(self):
+        from app.services.stream_service import StreamService
+        svc = StreamService()
+
+        # 1. Localhost default (RENDER not set): yt-dlp should run
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RENDER", None)
+            os.environ.pop("ENABLE_SERVER_YTDLP", None)
+            os.environ.pop("PROXY_URL", None)
+            self.assertTrue(svc.should_run_ytdlp())
+
+        # 2. Render cloud environment: yt-dlp should be skipped by default
+        with patch.dict(os.environ, {"RENDER": "true"}, clear=False):
+            os.environ.pop("ENABLE_SERVER_YTDLP", None)
+            os.environ.pop("PROXY_URL", None)
+            self.assertFalse(svc.should_run_ytdlp())
+
+        # 3. Render cloud environment with proxy: yt-dlp should run via proxy
+        with patch.dict(os.environ, {"RENDER": "true", "PROXY_URL": "http://user:pass@proxy.com:8080"}):
+            self.assertTrue(svc.should_run_ytdlp())
+
+        # 4. Render cloud environment with explicit ENABLE_SERVER_YTDLP override
+        with patch.dict(os.environ, {"RENDER": "true", "ENABLE_SERVER_YTDLP": "true"}):
+            os.environ.pop("PROXY_URL", None)
+            self.assertTrue(svc.should_run_ytdlp())
+
 
 if __name__ == "__main__":
     unittest.main()
+

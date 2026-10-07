@@ -96,15 +96,20 @@ cp .env.example .env
 
 | Variable | Description | Default |
 | --- | --- | --- |
+| `PORT` | Web server listening port (dynamically set by Render) | `8000` |
+| `RENDER` | Render environment indicator (automatically set to `true` by Render) | None |
+| `ENABLE_SERVER_YTDLP` | Toggle yt-dlp execution on server (disabled by default on Render) | `false` on Render / `true` on local |
 | `SAAVN_BASE_URL` | JioSaavn API gateway | `https://saavn.sumit.co` |
 | `HOME_CACHE_TTL_SECONDS` | Cache duration for home feed (24h) | `86400` |
 | `FIREBASE_CREDENTIALS_PATH` | Path to service account JSON | `credentials/firebase-service-account.json` |
 | `FIREBASE_CREDENTIALS_JSON` | Service account JSON string (for CI/Cloud) | None |
 | `GRPC_DNS_RESOLVER` | Resolver for Linux gRPC network | `native` |
+| `PROXY_URL` | Optional proxy URL (HTTP/HTTPS/SOCKS5) for yt-dlp | None |
 
 > ⚠️ **Security Warning**: Never commit `credentials/` or `firebase-service-account.json` to version control.
 
 ---
+
 
 ## 🚀 Running Locally
 
@@ -148,13 +153,40 @@ ruff check app core tests
 ---
 
 ## 🐳 Docker Deployment
-
+ 
 ```bash
 # Build the image
 docker build -t rhythm-backend .
 
-# Run the container
+# Run the container (binds to port 8000 by default)
 docker run -d -p 8000:8000 \
   -e FIREBASE_CREDENTIALS_JSON='{"type":"service_account",...}' \
   --name rhythm-backend rhythm-backend
 ```
+
+---
+
+## ☁️ Deploying to Render
+
+This repository includes a [`render.yaml`](file:///home/sree/sree/rhythm_backend/render.yaml) blueprint and dynamic port binding support for easy deployment on [Render](https://render.com/).
+
+### Dynamic Port Handling
+- Render dynamically assigns an internal port via the `PORT` environment variable (typically `10000`).
+- The [`Dockerfile`](file:///home/sree/sree/rhythm_backend/Dockerfile) starts Uvicorn via `sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"`, ensuring compatibility with both Render cloud servers (`$PORT`) and local development (`localhost:8000`).
+
+### yt-dlp Local vs Server Behavior
+- **Localhost Development (`localhost:8000`)**: yt-dlp runs natively as your primary audio stream extractor. Residential IPs are not blocked by YouTube.
+- **Render Cloud Server**: Render sets `RENDER=true`. yt-dlp is automatically **skipped** on the server to prevent YouTube datacenter IP blocking/delays, immediately using decentralized fallback stream APIs (**Piped** & **Invidious**).
+- **Optional Server yt-dlp Override**: If you attach a residential proxy, set `PROXY_URL` or `ENABLE_SERVER_YTDLP=true` in Render's environment variables.
+
+### Deploy Steps on Render:
+1. Push your repository to GitHub / GitLab.
+2. In the Render Dashboard, click **New +** -> **Blueprint**.
+3. Select your repository. Render will automatically detect [`render.yaml`](file:///home/sree/sree/rhythm_backend/render.yaml).
+4. Add your Firebase credentials either as:
+   - **Environment Variable**: `FIREBASE_CREDENTIALS_JSON` (paste your service account JSON string).
+   - **Secret File**: `/etc/secrets/firebase-service-account.json` (upload the JSON file).
+5. (Optional) Add YouTube cookies if needed:
+   - **Secret File**: `/etc/secrets/cookies.txt`.
+6. Deploy! Your API will be live with automatic `/health` checks.
+

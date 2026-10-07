@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: rhythm-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: RENDER
+        value: "true"
+      - key: ENABLE_SERVER_YTDLP
+        value: "false"
+      - key: SAAVN_BASE_URL
+        value: https://saavn.sumit.co
+      - key: HOME_CACHE_TTL_SECONDS
+        value: "86400"
+      - key: GRPC_DNS_RESOLVER
+        value: native
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: YOUTUBE_COOKIES
+        sync: false
+      - key: PROXY_URL
+        sync: false
+    secretFiles:
+      - name: cookies.txt
+        mountPath: /etc/secrets/cookies.txt
+      - name: firebase-service-account.json
+        mountPath: /etc/secrets/firebase-service-account.json

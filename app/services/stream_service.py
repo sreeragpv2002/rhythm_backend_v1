@@ -272,6 +272,30 @@ class StreamService:
                     return res
         return None
 
+    def should_run_ytdlp(self) -> bool:
+        """
+        Determines whether yt-dlp should be executed.
+        - On localhost (local machine port / development): runs yt-dlp natively.
+        - On server (Render cloud environment): skips yt-dlp by default to prevent YouTube
+          datacenter IP blocking, immediately routing to decentralized streaming fallbacks (Piped & Invidious).
+        - Can be forced on cloud server by setting ENABLE_SERVER_YTDLP=true or providing PROXY_URL.
+        """
+        if os.getenv("ENABLE_YTDLP", "true").lower() in ("false", "0", "no"):
+            return False
+
+        # If a proxy is configured, yt-dlp can safely route requests through the proxy even on servers
+        proxy = os.getenv("PROXY_URL") or os.getenv("YOUTUBE_PROXY") or os.getenv("HTTPS_PROXY")
+        if proxy:
+            return True
+
+        # Check if running on Render
+        is_render = os.getenv("RENDER", "").lower() in ("true", "1")
+        if is_render:
+            return os.getenv("ENABLE_SERVER_YTDLP", "false").lower() in ("true", "1")
+
+        # Local development / localhost: always run yt-dlp by default
+        return os.getenv("ENABLE_SERVER_YTDLP", "true").lower() in ("true", "1")
+
     async def get_audio_stream_url(self, song_id: str, song_url: str | None = None) -> str | None:
         """
         Resolves a temporary direct audio stream URL for a given song ID or URL.
@@ -294,8 +318,15 @@ class StreamService:
             else (song_url or "")
         )
 
-        # 1. Primary: yt-dlp (with Android/iOS client and optional cookies/proxy)
-        direct_url = await asyncio.to_thread(self._extract_stream_url_sync, target_url)
+        # 1. Primary: yt-dlp (runs on localhost or when proxy/server yt-dlp is enabled)
+        direct_url = None
+        if self.should_run_ytdlp():
+            direct_url = await asyncio.to_thread(self._extract_stream_url_sync, target_url)
+        else:
+            logger.info(
+                f"Skipping server-side yt-dlp for song {clean_id} (Render/server environment). "
+                "Using fast decentralized fallback instances directly."
+            )
 
         # 2. Secondary fallback: Piped instances (ideal for datacenter IPs like Render)
         if not direct_url and clean_id:

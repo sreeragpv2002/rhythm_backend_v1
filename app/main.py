@@ -36,6 +36,10 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "api_version": "v1",
+        "port": settings.PORT,
+        "is_render": settings.IS_RENDER,
+        "ytdlp_enabled": stream_service.should_run_ytdlp(),
         "cookies_loaded": bool(cookie_path and os.path.exists(cookie_path)),
         "cookies_count": cookies_count,
     }
+
