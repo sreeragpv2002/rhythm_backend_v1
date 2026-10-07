@@ -166,12 +166,7 @@ async def get_details(
         song_count=song_count,
         album_count=album_count
     )
-    return UnifiedDetailsResponse(
-        success=True,
-        type=canonical_type,
-        data=data,
-        mp3=data.get("mp3") if canonical_type == "song" else None
-    )
+    return UnifiedDetailsResponse(success=True, type=canonical_type, data=data)
 
 
 @router.get(
@@ -199,12 +194,7 @@ async def get_details_by_path(
         song_count=song_count,
         album_count=album_count
     )
-    return UnifiedDetailsResponse(
-        success=True,
-        type=canonical_type,
-        data=data,
-        mp3=data.get("mp3") if canonical_type == "song" else None
-    )
+    return UnifiedDetailsResponse(success=True, type=canonical_type, data=data)
 
 
 # Dedicated routers for convenient direct resource access
@@ -223,7 +213,7 @@ async def get_song_by_id(
     Returns full song details along with a suggested songs list.
     """
     data = await fetch_details(entity_type="song", entity_id=id, limit=limit)
-    return UnifiedDetailsResponse(success=True, type="song", data=data, mp3=data.get("mp3"))
+    return UnifiedDetailsResponse(success=True, type="song", data=data)
 
 
 @playlists_router.get("/{id}", summary="Get Playlist Details")

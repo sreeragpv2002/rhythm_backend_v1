@@ -136,13 +136,13 @@ class TestCIOffline(unittest.TestCase):
 
             self.assertTrue(body.get("success"))
             self.assertEqual(body.get("type"), "song")
-            self.assertEqual(body.get("mp3"), mock_stream_url)
+            self.assertNotIn("mp3", body, "mp3 must not be duplicated at root level")
 
             data = body.get("data", {})
             self.assertEqual(data.get("id"), "HaU84TfH9nU")
             # Existing song URL must remain unchanged
             self.assertEqual(data.get("url"), "https://music.youtube.com/watch?v=HaU84TfH9nU")
-            # mp3 field must contain the direct stream URL
+            # mp3 field must contain the direct stream URL inside data
             self.assertEqual(data.get("mp3"), mock_stream_url)
             # Other fields preserved
             self.assertEqual(data.get("name"), "Adyam Thammil")
@@ -183,9 +183,11 @@ class TestCIOffline(unittest.TestCase):
 
     def test_stream_service_format_configuration(self):
         from app.services.stream_service import stream_service
-        self.assertIn("m4a", stream_service._ydl_opts.get("format", ""))
-        self.assertTrue(stream_service._ydl_opts.get("skip_download"))
-        self.assertTrue(stream_service._ydl_opts.get("noplaylist"))
+        opts = stream_service._get_ydl_opts()
+        self.assertIn("m4a", opts.get("format", ""))
+        self.assertTrue(opts.get("skip_download"))
+        self.assertTrue(opts.get("noplaylist"))
+        self.assertIn("android", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
 
 
 if __name__ == "__main__":
