@@ -80,9 +80,15 @@ class StreamService:
             except Exception as e:
                 logger.error(f"Failed to create temporary cookies file: {e}")
 
+    def get_cookie_file_path(self) -> str | None:
+        """Returns the active cookie file path or re-checks paths if not currently set."""
+        if not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
+            self._init_cookie_file()
+        return self._cookie_file_path
+
     def _get_ydl_opts(self) -> dict[str, Any]:
         """Constructs yt-dlp options optimized for datacenter cloud environments."""
-        if not self._cookie_file_path:
+        if not self._cookie_file_path or not os.path.exists(self._cookie_file_path):
             self._init_cookie_file()
 
         opts: dict[str, Any] = {
