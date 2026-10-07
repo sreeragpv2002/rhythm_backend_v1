@@ -189,6 +189,17 @@ class TestCIOffline(unittest.TestCase):
         self.assertTrue(opts.get("noplaylist"))
         self.assertIn("android", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
 
+    def test_stream_service_cookie_detection(self):
+        from app.services.stream_service import StreamService
+        # Test inline env var
+        with patch.dict(os.environ, {"YOUTUBE_COOKIES": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1800000000\tSID\ttest"}):
+            svc = StreamService()
+            self.assertIsNotNone(svc._cookie_file_path)
+            self.assertTrue(os.path.exists(svc._cookie_file_path))
+            opts = svc._get_ydl_opts()
+            self.assertEqual(opts.get("cookiefile"), svc._cookie_file_path)
+            self.assertIn("web", opts.get("extractor_args", {}).get("youtube", {}).get("player_client", []))
+
 
 if __name__ == "__main__":
     unittest.main()

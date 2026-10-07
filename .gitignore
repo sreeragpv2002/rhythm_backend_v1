@@ -23,6 +23,8 @@ credentials/
 *firebase*.json
 *.pem
 *.key
+*cookies*.txt
+cookies.txt
 
 # Testing & Coverage
 .pytest_cache/

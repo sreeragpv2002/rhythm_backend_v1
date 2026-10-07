@@ -107,6 +107,15 @@ class StreamService:
         # Apply cookies if available
         if self._cookie_file_path and os.path.exists(self._cookie_file_path):
             opts["cookiefile"] = self._cookie_file_path
+            # When browser cookies are provided, allow web and android clients
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["web", "android"],
+                },
+                "youtubemusic": {
+                    "player_client": ["web", "android"],
+                },
+            }
 
         # Apply proxy if configured
         proxy = os.getenv("PROXY_URL") or os.getenv("YOUTUBE_PROXY") or os.getenv("HTTPS_PROXY")
