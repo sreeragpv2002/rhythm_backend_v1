@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+
+# Environment and sensitive files
+.env
+.env.*
+credentials/*.json
+!credentials/.gitkeep
+
+# Git and CI
+.git/
+.github/
+.gitignore
+
+# Cache and testing
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+tests/
+
+# Documentation and markdown
+README.md
+*.md
