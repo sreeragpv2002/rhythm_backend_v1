@@ -128,6 +128,63 @@ class TestHomeAPI(unittest.TestCase):
             self.assertEqual(len(home_data.get("trending_albums", [])), 1)
             self.assertEqual(len(home_data.get("top_artists", [])), 1)
 
+            # Check new sections
+            self.assertIn("quick_picks", home_data)
+            self.assertIn("new_malayalam_releases", home_data)
+            self.assertIn("top_charts", home_data)
+            self.assertIn("mood_and_genres", home_data)
+            self.assertIn("popular_artists", home_data)
+            self.assertIn("old_is_gold", home_data)
+            self.assertIn("sections_order", home_data)
+
+            # Verify Mood & Genres structure
+            mood_and_genres = home_data.get("mood_and_genres", {})
+            self.assertGreaterEqual(len(mood_and_genres.get("moods", [])), 10)
+            self.assertGreaterEqual(len(mood_and_genres.get("activities", [])), 13)
+            self.assertGreaterEqual(len(mood_and_genres.get("genres", [])), 11)
+
+    def test_home_default_languages_when_none_in_firestore(self):
+        mock_sections = {"trending_songs": []}
+
+        with (
+            patch("app.api.v1.endpoints.home.verify_user_exists", return_value=True),
+            patch("app.api.v1.endpoints.home.get_user_languages", return_value=[]),
+            patch("app.api.v1.endpoints.home.get_recent_plays", return_value=[]),
+            patch.object(ytmusic_service, "fetch_home_sections", return_value=mock_sections) as mock_fetch,
+        ):
+            response = self.client.get("/api/v1/home?user_id=new_user_without_languages")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            home_data = data.get("data", {})
+            self.assertEqual(home_data.get("user_languages"), ["malayalam", "english"])
+            mock_fetch.assert_called_once()
+            call_kwargs = mock_fetch.call_args[1]
+            self.assertEqual(call_kwargs.get("language"), "malayalam, english")
+
+    def test_category_explore_endpoint(self):
+        mock_category_content = {
+            "songs": [
+                {"id": "cat_s1", "name": "Gym Track 1", "type": "song", "thumbnails": []}
+            ],
+            "playlists": [
+                {"id": "cat_p1", "name": "Gym Playlist 1", "type": "playlist", "thumbnails": []}
+            ],
+        }
+
+        with patch.object(ytmusic_service, "fetch_category_content", return_value=mock_category_content):
+            response = self.client.get("/api/v1/home/category/gym-workout")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data["category"]["id"], "gym-workout")
+            self.assertEqual(data["category"]["emoji"], "💪")
+            self.assertEqual(len(data.get("songs", [])), 1)
+            self.assertEqual(len(data.get("playlists", [])), 1)
+
+    def test_category_explore_not_found(self):
+        response = self.client.get("/api/v1/home/category/non-existent-category")
+        self.assertEqual(response.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

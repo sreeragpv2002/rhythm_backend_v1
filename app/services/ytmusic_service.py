@@ -344,67 +344,113 @@ class YTMusicService:
 
     async def fetch_home_sections(self, language: str | None = None, limit: int = 10) -> dict[str, list[dict[str, Any]]]:
         """
-        Fetches trending songs, featured playlists, trending albums, and top artists.
-        Supports single or multiple comma-separated languages (e.g. 'english, malayalam, tamil').
-        When multiple languages are provided, fetches items for all languages and round-robin interleaves them.
+        Fetches comprehensive home screen sections:
+        - Trending Songs
+        - New Malayalam Releases
+        - Top Charts
+        - Featured Playlists
+        - Trending Albums
+        - Popular / Top Artists
+        - Old Is Gold
+        - Default Quick Picks
+
+        Supports single or multiple comma-separated languages (defaulting to Malayalam).
         Caches the combined sections for 1 day (settings.HOME_CACHE_TTL_SECONDS = 86400s).
         """
         langs = parse_languages(language)
-        normalized_langs = ",".join(sorted(langs)) if langs else "all"
-        cache_key = f"yt_home_sections:{normalized_langs}:{limit}"
+        if not langs:
+            langs = ["malayalam", "english"]
+        normalized_langs = ",".join(sorted(langs))
+        cache_key = f"yt_home_sections_v4:{normalized_langs}:{limit}"
 
         cached_sections = ttl_cache.get(cache_key)
         if cached_sections is not None:
             logger.info(f"Serving YouTube Music home sections from cache (key: {cache_key})")
             return cached_sections
 
-        if len(langs) <= 1:
-            lang = langs[0] if langs else None
-            song_query = f"{lang} top hit songs" if lang else "top hit songs"
-            playlist_query = f"{lang} top playlists" if lang else "top playlists"
-            album_query = f"{lang} top albums" if lang else "top albums"
-            artist_query = f"{lang} top artists" if lang else "top artists"
+        if len(langs) == 1:
+            primary_lang = langs[0]
+            trending_q = f"{primary_lang} top hit songs"
+            new_releases_q = "malayalam new songs latest releases"
+            top_charts_q = f"{primary_lang} top 50 viral hits chart"
+            playlists_q = f"{primary_lang} top playlists"
+            albums_q = f"{primary_lang} top albums"
+            artists_q = f"{primary_lang} top artists singers"
+            old_gold_q = "malayalam evergreen old golden hits classic songs" if primary_lang == "malayalam" else f"{primary_lang} classic old golden hits songs"
+            quick_picks_q = f"{primary_lang} top picks recommended songs"
 
-            songs, playlists, albums, artists = await asyncio.gather(
-                self.search_songs(query=song_query, limit=limit, language=lang),
-                self.search_playlists(query=playlist_query, limit=limit, language=lang),
-                self.search_albums(query=album_query, limit=limit, language=lang),
-                self.search_artists(query=artist_query, limit=limit, language=lang),
+            (
+                trending_songs,
+                new_releases,
+                top_charts,
+                playlists,
+                albums,
+                artists,
+                old_gold,
+                default_quick_picks,
+            ) = await asyncio.gather(
+                self.search_songs(query=trending_q, limit=limit, language=primary_lang),
+                self.search_songs(query=new_releases_q, limit=limit, language="malayalam"),
+                self.search_songs(query=top_charts_q, limit=limit, language=primary_lang),
+                self.search_playlists(query=playlists_q, limit=limit, language=primary_lang),
+                self.search_albums(query=albums_q, limit=limit, language=primary_lang),
+                self.search_artists(query=artists_q, limit=limit, language=primary_lang),
+                self.search_songs(query=old_gold_q, limit=limit, language=primary_lang),
+                self.search_songs(query=quick_picks_q, limit=limit, language=primary_lang),
                 return_exceptions=True
             )
 
             sections = {
-                "trending_songs": songs if isinstance(songs, list) else [],
+                "trending_songs": trending_songs if isinstance(trending_songs, list) else [],
+                "new_malayalam_releases": new_releases if isinstance(new_releases, list) else [],
+                "top_charts": top_charts if isinstance(top_charts, list) else [],
                 "featured_playlists": playlists if isinstance(playlists, list) else [],
                 "trending_albums": albums if isinstance(albums, list) else [],
+                "popular_artists": artists if isinstance(artists, list) else [],
                 "top_artists": artists if isinstance(artists, list) else [],
+                "old_is_gold": old_gold if isinstance(old_gold, list) else [],
+                "quick_picks_default": default_quick_picks if isinstance(default_quick_picks, list) else [],
             }
         else:
-            fetch_limit = limit
-            song_tasks = [self.search_songs(query=f"{lang} top hit songs", limit=fetch_limit, language=lang) for lang in langs]
-            playlist_tasks = [self.search_playlists(query=f"{lang} top playlists", limit=fetch_limit, language=lang) for lang in langs]
-            album_tasks = [self.search_albums(query=f"{lang} top albums", limit=fetch_limit, language=lang) for lang in langs]
-            artist_tasks = [self.search_artists(query=f"{lang} top artists", limit=fetch_limit, language=lang) for lang in langs]
+            # Multi-language (e.g. default ["malayalam", "english"] or user's selected languages)
+            song_tasks = [self.search_songs(query=f"{lang} top hit songs", limit=limit, language=lang) for lang in langs]
+            chart_tasks = [self.search_songs(query=f"{lang} top 50 viral hits chart", limit=limit, language=lang) for lang in langs]
+            playlist_tasks = [self.search_playlists(query=f"{lang} top playlists", limit=limit, language=lang) for lang in langs]
+            album_tasks = [self.search_albums(query=f"{lang} top albums", limit=limit, language=lang) for lang in langs]
+            artist_tasks = [self.search_artists(query=f"{lang} top artists singers", limit=limit, language=lang) for lang in langs]
+            quick_tasks = [self.search_songs(query=f"{lang} top picks recommended songs", limit=limit, language=lang) for lang in langs]
 
-            all_results = await asyncio.gather(
+            all_multi = await asyncio.gather(
                 asyncio.gather(*song_tasks, return_exceptions=True),
+                asyncio.gather(*chart_tasks, return_exceptions=True),
                 asyncio.gather(*playlist_tasks, return_exceptions=True),
                 asyncio.gather(*album_tasks, return_exceptions=True),
                 asyncio.gather(*artist_tasks, return_exceptions=True),
+                asyncio.gather(*quick_tasks, return_exceptions=True),
+                self.search_songs(query="malayalam new songs latest releases", limit=limit, language="malayalam"),
+                self.search_songs(query="malayalam evergreen old golden hits classic songs", limit=limit, language="malayalam"),
+                return_exceptions=True
             )
 
-            songs_by_lang = [r for r in all_results[0] if isinstance(r, list)]
-            playlists_by_lang = [r for r in all_results[1] if isinstance(r, list)]
-            albums_by_lang = [r for r in all_results[2] if isinstance(r, list)]
-            artists_by_lang = [r for r in all_results[3] if isinstance(r, list)]
-
-            effective_limit = max(limit, len(langs))
+            songs_by_lang = [r for r in all_multi[0] if isinstance(r, list)]
+            charts_by_lang = [r for r in all_multi[1] if isinstance(r, list)]
+            playlists_by_lang = [r for r in all_multi[2] if isinstance(r, list)]
+            albums_by_lang = [r for r in all_multi[3] if isinstance(r, list)]
+            artists_by_lang = [r for r in all_multi[4] if isinstance(r, list)]
+            quick_by_lang = [r for r in all_multi[5] if isinstance(r, list)]
+            new_releases = all_multi[6] if isinstance(all_multi[6], list) else []
+            old_gold = all_multi[7] if isinstance(all_multi[7], list) else []
 
             sections = {
-                "trending_songs": interleave_results(songs_by_lang, total_limit=effective_limit),
-                "featured_playlists": interleave_results(playlists_by_lang, total_limit=effective_limit),
-                "trending_albums": interleave_results(albums_by_lang, total_limit=effective_limit),
-                "top_artists": interleave_results(artists_by_lang, total_limit=effective_limit),
+                "trending_songs": interleave_results(songs_by_lang, total_limit=limit),
+                "new_malayalam_releases": new_releases,
+                "top_charts": interleave_results(charts_by_lang, total_limit=limit),
+                "featured_playlists": interleave_results(playlists_by_lang, total_limit=limit),
+                "trending_albums": interleave_results(albums_by_lang, total_limit=limit),
+                "popular_artists": interleave_results(artists_by_lang, total_limit=limit),
+                "top_artists": interleave_results(artists_by_lang, total_limit=limit),
+                "old_is_gold": old_gold,
+                "quick_picks_default": interleave_results(quick_by_lang, total_limit=limit),
             }
 
         if any(len(v) > 0 for v in sections.values()):
@@ -412,6 +458,65 @@ class YTMusicService:
             logger.info(f"Cached YouTube Music home sections for 1 day ({settings.HOME_CACHE_TTL_SECONDS}s)")
 
         return sections
+
+    async def get_personalized_quick_picks(self, recent_plays: list[dict[str, Any]], language: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
+        """
+        Generates personalized song recommendations:
+        - If recent plays exist, suggests songs related to the user's latest played song/artist.
+        - Fallbacks to top picks for the requested/Malayalam language.
+        """
+        primary_lang = (parse_languages(language) or ["malayalam"])[0]
+        if recent_plays:
+            first_song = recent_plays[0]
+            first_song_id = str(first_song.get("id") or "")
+            if first_song_id:
+                try:
+                    details = await self.get_song_details_with_suggestions(first_song_id, limit=limit)
+                    if details and details.get("suggested_songs"):
+                        recent_ids = {str(s.get("id")) for s in recent_plays}
+                        filtered = [s for s in details["suggested_songs"] if str(s.get("id")) not in recent_ids]
+                        if filtered:
+                            return filtered[:limit]
+                except Exception as e:
+                    logger.warning(f"Error fetching suggestions for recent song {first_song_id}: {e}")
+
+            artist = first_song.get("artist") or first_song.get("subtitle")
+            if artist:
+                try:
+                    artist_songs = await self.search_songs(query=f"{artist} songs", limit=limit)
+                    recent_ids = {str(s.get("id")) for s in recent_plays}
+                    filtered = [s for s in artist_songs if str(s.get("id")) not in recent_ids]
+                    if filtered:
+                        return filtered[:limit]
+                except Exception as e:
+                    logger.warning(f"Error fetching songs for artist {artist}: {e}")
+
+        return await self.search_songs(query=f"{primary_lang} top picks recommended songs", limit=limit, language=primary_lang)
+
+    async def fetch_category_content(self, query: str, limit: int = 20) -> dict[str, list[dict[str, Any]]]:
+        """
+        Fetches songs and playlists for a specific mood, activity, or genre category.
+        Cached for 1 day.
+        """
+        cache_key = f"yt_category_content:{query}:{limit}"
+        cached = ttl_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        songs, playlists = await asyncio.gather(
+            self.search_songs(query=query, limit=limit),
+            self.search_playlists(query=query, limit=max(limit // 2, 5)),
+            return_exceptions=True
+        )
+
+        result = {
+            "songs": songs if isinstance(songs, list) else [],
+            "playlists": playlists if isinstance(playlists, list) else []
+        }
+        if result["songs"] or result["playlists"]:
+            ttl_cache.set(cache_key, result, ttl=settings.HOME_CACHE_TTL_SECONDS)
+        return result
+
 
     async def universal_search(self, query: str, limit: int = 10) -> dict[str, Any]:
         """

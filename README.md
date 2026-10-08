@@ -7,10 +7,25 @@ A high-performance FastAPI backend for the **Rhythm** music streaming applicatio
 ## 🚀 Features
 
 - **Personalized Home API (`GET /api/v1/home`)**:
-  - Aggregates user recent plays, trending songs, featured playlists, trending albums, top artists, and language items.
-  - **Clean Minimal Schema**: Compact cards with `id`, `name`, `title`, `image`, `image_url`, and `type`.
-  - **Accurate Song Covers**: Intelligent metadata extraction ensures high-resolution track covers are displayed.
-  - **Multi-Language Aggregation**: Interleaves tracks across selected languages (`malayalam`, `tamil`, `hindi`, `kannada`, `telugu`, `english`).
+  - Organizes the home feed into the complete 12-section architecture:
+    1. Header (client-side clean & minimal branding, profile, notifications)
+    2. Search (client-side query bar invoking `/api/v1/search`)
+    3. **Recently Played** (horizontal scroll; hidden when empty)
+    4. **Quick Picks For You** (personalized suggestions based on listening history)
+    5. **Trending Songs** (curated trending tracks with direct playback)
+    6. **New Malayalam Releases** (dynamically updated fresh Malayalam songs)
+    7. **Top Charts** (top ranked tracks with `#1`, `#2`, `#3` ranking badges)
+    8. **Featured Playlists** (curated playlists with cover art & creator metadata)
+    9. **Mood & Genres** (dedicated categories: 10 Moods, 13 Activities, 11 Genres)
+    10. **Trending Albums** (popular square album covers)
+    11. **Popular Artists** (circular artist avatars linking to artist details)
+    12. **Old Is Gold** (evergreen Malayalam classics & legendary golden hits)
+  - **Automatic Firestore Language Preferences**:
+    - URL query parameter `language` is not required.
+    - Automatically retrieves the user's selected languages from Firestore (`users/{user_id}/languages`).
+    - If the user has not set any languages, defaults to **Malayalam and English** with fair round-robin interleaving.
+  - **Category Explore Endpoint (`GET /api/v1/home/category/{category_id}`)**:
+    - Returns dedicated songs and playlists when tapping any Mood, Activity, or Genre card.
   - **1-Day In-Memory Cache**: 24-hour TTL caching for home sections with instant user play invalidation.
 
 - **Unified Details API (`GET /api/v1/details`)**:
