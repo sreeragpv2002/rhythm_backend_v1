@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Any
 
 from ytmusicapi import YTMusic
@@ -41,6 +42,25 @@ def extract_image_url(image_data: Any) -> str:
         elif isinstance(last, str):
             return last
     return ""
+
+
+def normalize_title_for_comparison(title: str) -> str:
+    """
+    Normalizes a song title to compare whether two tracks represent the same song.
+    Strips brackets, punctuation, common suffixes ('official video', 'lyrical', etc.).
+    """
+    if not title:
+        return ""
+    t = title.lower()
+    t = re.sub(r"\[.*?\]|\(.*?\)", "", t)
+    t = re.sub(
+        r"\b(official video|video song|lyrical video|full song|audio song|4k video|remix|hd|visualizer|audio)\b",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(r"[^a-z0-9]", "", t)
+    return t.strip()
 
 
 def is_compilation_song(song: dict[str, Any]) -> bool:
@@ -600,52 +620,108 @@ class YTMusicService:
             ttl_cache.set(cache_key, song, ttl=settings.HOME_CACHE_TTL_SECONDS)
         return song
 
-    async def get_song_details_with_suggestions(self, song_id: str, limit: int = 10) -> dict[str, Any] | None:
+    async def get_song_details_with_suggestions(self, song_id: str, limit: int = 10, user_id: str | None = None) -> dict[str, Any] | None:
         """
         Retrieves song details along with a list of suggested songs.
-        Uses YouTube Music watch playlist recommendations with fallback.
+        Ensures suggested songs:
+        1. NEVER contain the currently playing song itself (by ID or normalized title).
+        2. NEVER contain songs the user has just played (from Firestore recent_plays when user_id is provided).
+        3. Do not contain duplicate titles in suggestions.
         Cached for 1 day.
         """
-        cache_key = f"yt_song_with_suggestions:{song_id}:{limit}"
+        cache_key = f"yt_song_with_suggestions_v2:{song_id}:{limit}:{user_id or 'anon'}"
         cached = ttl_cache.get(cache_key)
         if cached is not None:
             return cached
 
-        def _fetch():
-            song_info = None
-            suggestions = []
+        # Fetch basic song details
+        song = await self.get_song_by_id(song_id)
+        if not song:
+            return None
 
+        current_title = song.get("name") or song.get("title") or ""
+        current_title_clean = normalize_title_for_comparison(current_title)
+
+        # Excluded IDs and normalized titles
+        excluded_ids = {str(song_id)}
+        excluded_titles = {current_title_clean} if current_title_clean else set()
+
+        # If user_id is provided, exclude recently played songs
+        if user_id:
             try:
-                watch = self.yt.get_watch_playlist(videoId=song_id, limit=limit + 1)
+                from core.firebase import get_recent_plays
+                recent_plays = await asyncio.to_thread(get_recent_plays, user_id, 20)
+                if recent_plays:
+                    for r in recent_plays:
+                        r_id = str(r.get("id") or "")
+                        if r_id:
+                            excluded_ids.add(r_id)
+                        r_title = r.get("name") or r.get("title") or ""
+                        r_clean = normalize_title_for_comparison(r_title)
+                        if r_clean:
+                            excluded_titles.add(r_clean)
+            except Exception as e:
+                logger.warning(f"Failed to fetch recent plays for suggestions exclusion: {e}")
+
+        fetch_pool_limit = max(limit * 3, 20)
+
+        def _fetch_watch():
+            raw_items = []
+            try:
+                watch = self.yt.get_watch_playlist(videoId=song_id, limit=fetch_pool_limit)
                 tracks = watch.get("tracks", [])
-                if tracks:
-                    song_info = normalize_yt_song(tracks[0])
-                    for t in tracks[1:]:
-                        if str(t.get("videoId")) != str(song_id):
-                            suggestions.append(normalize_yt_song(t))
-                        if len(suggestions) >= limit:
-                            break
+                for t in tracks:
+                    raw_items.append(normalize_yt_song(t))
             except Exception as e:
                 logger.warning(f"get_watch_playlist failed for {song_id}: {e}")
+            return raw_items
 
-            return song_info, suggestions
+        raw_suggestions = await asyncio.to_thread(_fetch_watch)
 
-        song, suggestions = await asyncio.to_thread(_fetch)
+        # Filter out current song and recently played songs
+        filtered = []
+        seen_titles = set(excluded_titles)
 
-        if not song:
-            song = await self.get_song_by_id(song_id)
-            if not song:
-                return None
+        for s in raw_suggestions:
+            s_id = str(s.get("id") or "")
+            s_name = s.get("name") or s.get("title") or ""
+            s_clean = normalize_title_for_comparison(s_name)
 
-        if not suggestions:
+            if s_id in excluded_ids:
+                continue
+            if s_clean and s_clean in seen_titles:
+                continue
+
+            if s_clean:
+                seen_titles.add(s_clean)
+            filtered.append(s)
+            if len(filtered) >= limit:
+                break
+
+        # If suggestions drop below limit, fetch extra recommendations from artist/genre
+        if len(filtered) < limit:
             artist_name = song.get("artist") or ""
-            query_term = f"{artist_name} songs".strip() or "hit songs"
-            fallback_items = await self.search_songs(query=query_term, limit=limit + 3)
-            suggestions = [s for s in fallback_items if str(s.get("id")) != str(song_id)][:limit]
+            query_term = f"{artist_name} songs".strip() or "top songs"
+            fallback_items = await self.search_songs(query=query_term, limit=limit * 2)
+            for fb in fallback_items:
+                fb_id = str(fb.get("id") or "")
+                fb_name = fb.get("name") or fb.get("title") or ""
+                fb_clean = normalize_title_for_comparison(fb_name)
+
+                if fb_id in excluded_ids:
+                    continue
+                if fb_clean and fb_clean in seen_titles:
+                    continue
+
+                if fb_clean:
+                    seen_titles.add(fb_clean)
+                filtered.append(fb)
+                if len(filtered) >= limit:
+                    break
 
         result = {
             **song,
-            "suggested_songs": suggestions
+            "suggested_songs": filtered[:limit],
         }
         ttl_cache.set(cache_key, result, ttl=settings.HOME_CACHE_TTL_SECONDS)
         return result

@@ -5,6 +5,7 @@ from app.api.v1.endpoints.details import (
     artists_router,
     playlists_router,
     songs_router,
+    stream_router,
 )
 from app.api.v1.endpoints.details import (
     router as details_router,
@@ -23,6 +24,7 @@ api_router.include_router(recent_plays_router, prefix="/recent-plays", tags=["Re
 api_router.include_router(languages_router, prefix="/languages", tags=["Languages"])
 api_router.include_router(details_router, prefix="/details", tags=["Details"])
 api_router.include_router(songs_router, prefix="/songs", tags=["Songs"])
+api_router.include_router(stream_router, prefix="/stream", tags=["Stream"])
 api_router.include_router(playlists_router, prefix="/playlists", tags=["Playlists"])
 api_router.include_router(artists_router, prefix="/artists", tags=["Artists"])
 api_router.include_router(albums_router, prefix="/albums", tags=["Albums"])

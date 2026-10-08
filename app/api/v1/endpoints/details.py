@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.api.v1.endpoints.home import extract_image_url, format_home_item
-from app.models.details import UnifiedDetailsResponse
+from app.models.details import StreamData, StreamResponse, UnifiedDetailsResponse
 from app.services.ytmusic_service import ytmusic_service
 
 router = APIRouter()
@@ -87,12 +87,29 @@ async def fetch_details(
     canonical_type = normalize_type(entity_type)
 
     if canonical_type == "song":
-        data = await ytmusic_service.get_song_details_with_suggestions(entity_id, limit=limit)
+        data = await ytmusic_service.get_song_details_with_suggestions(entity_id, limit=limit, user_id=user_id)
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Song with ID '{entity_id}' not found on YouTube Music"
             )
+        # Enrich with Direct CDN audio stream (JioSaavn CDN / MP3 / M4A)
+        from app.services.cdn_stream_service import cdn_stream_service
+        try:
+            cdn_info = await cdn_stream_service.resolve_cdn_stream(
+                song_id=entity_id,
+                title=data.get("name") or data.get("title"),
+                artist=data.get("artist") or data.get("subtitle")
+            )
+            if cdn_info:
+                data["stream_url"] = cdn_info.get("stream_url")
+                data["download_url"] = cdn_info.get("download_url")
+                data["download_urls"] = cdn_info.get("download_urls", [])
+                data["is_direct_cdn"] = True
+        except Exception:
+            # Non-blocking CDN resolution failure; fallback gracefully
+            pass
+
         formatted = format_details_response(canonical_type, data)
         return formatted
 
@@ -204,13 +221,64 @@ albums_router = APIRouter()
 @songs_router.get("/{id}", summary="Get Song Details with Suggested Songs")
 async def get_song_by_id(
     id: str = Path(..., description="Unique Song ID on YouTube Music"),
+    user_id: str | None = Query(None, description="Optional Firebase User ID to exclude user's recently played tracks from suggestions"),
     limit: int = Query(10, ge=1, le=50, description="Limit for suggested songs (1-50)")
 ):
     """
     Returns full song details along with a suggested songs list.
+    Suggested songs exclude the current song and any tracks the user recently played.
     """
-    data = await fetch_details(entity_type="song", entity_id=id, limit=limit)
+    data = await fetch_details(entity_type="song", entity_id=id, user_id=user_id, limit=limit)
     return UnifiedDetailsResponse(success=True, type="song", data=data)
+
+
+@songs_router.get("/{id}/stream", response_model=StreamResponse, summary="Get Direct CDN Audio Stream for Song")
+async def get_song_stream(
+    id: str = Path(..., description="Unique Song ID or YouTube Video ID"),
+    title: str | None = Query(None, description="Optional song title for CDN matching"),
+    artist: str | None = Query(None, description="Optional song artist for CDN matching")
+):
+    """
+    Retrieves direct CDN audio links (e.g., JioSaavn CDN / MP3 / M4A) rather than scraping YouTube.
+    Safest & fastest streaming method on Render with zero YouTube bot checks or IP blockages.
+    """
+    from app.services.cdn_stream_service import cdn_stream_service
+    cdn_info = await cdn_stream_service.resolve_cdn_stream(song_id=id, title=title, artist=artist)
+    if not cdn_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Direct CDN audio stream not found for song '{id}'"
+        )
+    return StreamResponse(
+        success=True,
+        data=StreamData(
+            id=id,
+            title=cdn_info.get("title", ""),
+            artist=cdn_info.get("artist"),
+            stream_url=cdn_info["stream_url"],
+            download_url=cdn_info["download_url"],
+            download_urls=cdn_info.get("download_urls", []),
+            quality=cdn_info.get("quality", "320kbps"),
+            format=cdn_info.get("format", "m4a"),
+            source="saavn_cdn",
+            is_direct_cdn=True,
+        )
+    )
+
+
+stream_router = APIRouter()
+
+
+@stream_router.get("/{id}", response_model=StreamResponse, summary="Get Direct CDN Audio Stream")
+async def get_direct_stream_by_id(
+    id: str = Path(..., description="Unique Song ID or YouTube Video ID"),
+    title: str | None = Query(None, description="Optional song title for CDN matching"),
+    artist: str | None = Query(None, description="Optional song artist for CDN matching")
+):
+    """
+    Direct alias endpoint to retrieve CDN audio stream.
+    """
+    return await get_song_stream(id=id, title=title, artist=artist)
 
 
 @playlists_router.get("/{id}", summary="Get Playlist Details")

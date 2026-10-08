@@ -185,6 +185,53 @@ class TestHomeAPI(unittest.TestCase):
         response = self.client.get("/api/v1/home/category/non-existent-category")
         self.assertEqual(response.status_code, 404)
 
+    def test_suggestions_exclude_current_and_recent_songs(self):
+        from app.services.ytmusic_service import normalize_title_for_comparison
+        self.assertEqual(normalize_title_for_comparison("Illuminati (From 'Aavesham')"), "illuminati")
+        self.assertEqual(normalize_title_for_comparison("Illuminati [Official Video]"), "illuminati")
+
+        mock_song = {
+            "id": "s_current",
+            "name": "Illuminati",
+            "title": "Illuminati",
+            "artist": "Sushin Shyam",
+        }
+        mock_raw_watch = {
+            "tracks": [
+                {"videoId": "s_current", "title": "Illuminati"},
+                {"videoId": "s_variant", "title": "Illuminati (Official Video)"},
+                {"videoId": "s_recent", "title": "Just Played Track"},
+                {"videoId": "s_fresh1", "title": "Armadham"},
+                {"videoId": "s_fresh2", "title": "Jaada"},
+            ]
+        }
+        mock_recent = [{"id": "s_recent", "name": "Just Played Track"}]
+
+        with (
+            patch.object(ytmusic_service, "get_song_by_id", return_value=mock_song),
+            patch.object(ytmusic_service.yt, "get_watch_playlist", return_value=mock_raw_watch),
+            patch("core.firebase.get_recent_plays", return_value=mock_recent),
+        ):
+            import asyncio
+            result = asyncio.run(
+                ytmusic_service.get_song_details_with_suggestions(
+                    song_id="s_current", limit=5, user_id="test_user"
+                )
+            )
+            self.assertIsNotNone(result)
+            suggestions = result.get("suggested_songs", [])
+            sug_ids = [s.get("id") for s in suggestions]
+
+            # Current song must NOT be suggested
+            self.assertNotIn("s_current", sug_ids)
+            # Variant upload of current song must NOT be suggested
+            self.assertNotIn("s_variant", sug_ids)
+            # User's just-played song must NOT be suggested
+            self.assertNotIn("s_recent", sug_ids)
+            # Fresh songs must be suggested
+            self.assertIn("s_fresh1", sug_ids)
+            self.assertIn("s_fresh2", sug_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

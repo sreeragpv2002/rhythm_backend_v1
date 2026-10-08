@@ -17,6 +17,8 @@ class HomeItem(BaseModel):
     duration: int | None = Field(default=None, description="Duration in seconds")
     duration_formatted: str | None = Field(default=None, description="Duration formatted (e.g. '3:45')")
     url: str | None = Field(default=None, description="Direct watch / playback URL")
+    stream_url: str | None = Field(default=None, description="Direct CDN audio stream URL (MP3/M4A)")
+    download_url: str | None = Field(default=None, description="Direct CDN audio download URL")
 
 
 class HomeData(BaseModel):

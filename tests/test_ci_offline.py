@@ -177,6 +177,28 @@ class TestCIOffline(unittest.TestCase):
             call_args = mock_doc_ref.set.call_args[0][0]
             self.assertNotIn("mp3", call_args, "mp3 must not be saved to Firestore in playlists")
 
+    def test_direct_cdn_stream_endpoint(self):
+        mock_cdn_info = {
+            "id": "HaU84TfH9nU",
+            "title": "Adyam Thammil",
+            "artist": "Haricharan",
+            "stream_url": "https://aac.saavncdn.com/123/adyam_thammil_320.mp4",
+            "download_url": "https://aac.saavncdn.com/123/adyam_thammil_320.mp4",
+            "download_urls": [{"quality": "320kbps", "url": "https://aac.saavncdn.com/123/adyam_thammil_320.mp4"}],
+            "quality": "320kbps",
+            "format": "m4a",
+            "source": "saavn_cdn",
+            "is_direct_cdn": True,
+        }
+        with patch("app.services.cdn_stream_service.cdn_stream_service.resolve_cdn_stream", return_value=mock_cdn_info):
+            res = self.client.get("/api/v1/songs/HaU84TfH9nU/stream")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data["data"]["stream_url"], "https://aac.saavncdn.com/123/adyam_thammil_320.mp4")
+            self.assertEqual(data["data"]["source"], "saavn_cdn")
+            self.assertTrue(data["data"]["is_direct_cdn"])
+
 
 if __name__ == "__main__":
     unittest.main()

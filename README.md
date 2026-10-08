@@ -28,10 +28,15 @@ A high-performance FastAPI backend for the **Rhythm** music streaming applicatio
     - Returns dedicated songs and playlists when tapping any Mood, Activity, or Genre card.
   - **1-Day In-Memory Cache**: 24-hour TTL caching for home sections with instant user play invalidation.
 
+- **Direct CDN Audio Streams (`GET /api/v1/songs/{id}/stream` & `/api/v1/stream/{id}`)**:
+  - Uses direct audio links (JioSaavn CDN / MP3 / M4A) rather than scraping YouTube.
+  - **Safest & Fastest**: Zero YouTube bot checks, no PO token requirements, and immune to cloud IP blockages on Render.
+  - Enriched with 320kbps / 160kbps bitrates and available directly on `GET /api/v1/songs/{id}` (`stream_url`, `download_url`, `download_urls`).
+
 - **Unified Details API (`GET /api/v1/details`)**:
   - Single polymorphic endpoint supporting `song`, `playlist`, `artist`, and `album`.
   - Also available via explicit endpoints: `/api/v1/songs/{id}`, `/api/v1/playlists/{id}`, `/api/v1/artists/{id}`, `/api/v1/albums/{id}`.
-  - For songs, includes **automated related song suggestions** (`suggested_songs`).
+  - For songs, includes **direct CDN stream links** (`stream_url`) and **automated related song suggestions** (`suggested_songs`).
 
 - **User Language Preferences (`/api/v1/languages`)**:
   - Allowed languages: `malayalam`, `tamil`, `hindi`, `kannada`, `telugu`, `english`.
