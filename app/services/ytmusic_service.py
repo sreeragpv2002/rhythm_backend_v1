@@ -613,6 +613,35 @@ class YTMusicService:
                     }
             except Exception as e:
                 logger.error(f"Error fetching song {song_id} from YouTube Music: {e}")
+
+            # Resilient Fallback for Render / Datacenter IPs: YouTube oEmbed endpoint (no auth or cookies required)
+            try:
+                import requests
+                resp = requests.get(
+                    f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={song_id}&format=json",
+                    timeout=4.0
+                )
+                if resp.status_code == 200:
+                    oe = resp.json()
+                    oe_title = oe.get("title") or ""
+                    oe_author = (oe.get("author_name") or "").replace(" - Topic", "").strip()
+                    thumb = oe.get("thumbnail_url") or f"https://i.ytimg.com/vi/{song_id}/hqdefault.jpg"
+                    return {
+                        "id": str(song_id),
+                        "name": oe_title,
+                        "title": oe_title,
+                        "type": "song",
+                        "image": thumb,
+                        "image_url": thumb,
+                        "subtitle": oe_author,
+                        "artist": oe_author,
+                        "duration": None,
+                        "play_count": None,
+                        "url": f"https://music.youtube.com/watch?v={song_id}",
+                    }
+            except Exception as oe_err:
+                logger.warning(f"oEmbed metadata fallback failed for {song_id}: {oe_err}")
+
             return None
 
         song = await asyncio.to_thread(_fetch)

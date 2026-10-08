@@ -199,6 +199,36 @@ class TestCIOffline(unittest.TestCase):
             self.assertEqual(data["data"]["source"], "saavn_cdn")
             self.assertTrue(data["data"]["is_direct_cdn"])
 
+    def test_search_candidates_generation(self):
+        from app.services.cdn_stream_service import (
+            clean_artist_for_search,
+            extract_movie_or_album,
+            generate_search_candidates,
+        )
+
+        # Test video title with pipe: Vellarathaaram | Sarvam Maya | Nivin Pauly...
+        title1 = "Vellarathaaram | Sarvam Maya | Nivin Pauly, Aju Varghese | Justin, Vineeth Sreenivasan"
+        movie1 = extract_movie_or_album(title1)
+        self.assertEqual(movie1, "Sarvam Maya")
+
+        cands1 = generate_search_candidates(title1, artist="Saregama Malayalam")
+        self.assertIn("Vellarathaaram Sarvam Maya", cands1)
+        self.assertIn("Vellarathaaram", cands1)
+
+        # Test title with (From "Sarvam Maya")
+        title2 = 'Vellarathaaram (From "Sarvam Maya")'
+        movie2 = extract_movie_or_album(title2)
+        self.assertEqual(movie2, "Sarvam Maya")
+
+        cands2 = generate_search_candidates(title2, artist="Justin Prabhakaran - Topic")
+        self.assertIn("Vellarathaaram Sarvam Maya", cands2)
+        self.assertIn("Vellarathaaram Justin Prabhakaran", cands2)
+        self.assertIn("Vellarathaaram", cands2)
+
+        # Test clean artist
+        self.assertEqual(clean_artist_for_search("Justin Prabhakaran - Topic"), "Justin Prabhakaran")
+        self.assertEqual(clean_artist_for_search("Saregama Malayalam VEVO"), "Saregama")
+
 
 if __name__ == "__main__":
     unittest.main()

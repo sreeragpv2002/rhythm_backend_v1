@@ -18,7 +18,7 @@ def clean_song_title(title: str) -> str:
     """
     if not title:
         return ""
-    # Remove contents inside brackets/parentheses like (Official Video), [4K], (Lyrical), (From "Movie")
+    # Remove contents inside brackets/parentheses like (Official Video), [4K], (Lyrical)
     cleaned = re.sub(r"\[.*?\]|\(.*?\)", "", title)
     # Remove common video keywords
     cleaned = re.sub(
@@ -33,6 +33,98 @@ def clean_song_title(title: str) -> str:
         # Prefer the first or second meaningful segment
         return parts[0]
     return cleaned.strip()
+
+
+def extract_movie_or_album(title: str) -> str | None:
+    """
+    Extracts movie or soundtrack name from typical Indian song title patterns:
+    E.g., 'Vellarathaaram (From "Sarvam Maya")' -> 'Sarvam Maya'
+    or 'Vellarathaaram | Sarvam Maya | Nivin Pauly' -> 'Sarvam Maya'
+    """
+    if not title:
+        return None
+    # 1. Look for From "Movie" or From 'Movie' or From Movie
+    m = re.search(r"(?:from|from\s+the\s+movie)\s*[\"']?([^\"'\]\)\|\-]+)[\"']?", title, re.IGNORECASE)
+    if m:
+        cand = m.group(1).strip()
+        if len(cand) > 1:
+            return cand
+    # 2. Check parts separated by pipe or hyphen
+    parts = [p.strip() for p in re.split(r"[|•\-:]", title) if p.strip()]
+    if len(parts) >= 2:
+        cand = parts[1]
+        cand = re.sub(
+            r"\b(official video|video song|lyrical video|full song|audio song|4k video|remix|hd|visualizer|teaser|trailer)\b",
+            "",
+            cand,
+            flags=re.IGNORECASE,
+        ).strip()
+        if len(cand) > 1:
+            return cand
+    return None
+
+
+def clean_artist_for_search(artist: str | None) -> str:
+    """
+    Strips noise words and channel suffixes from YouTube channel names.
+    E.g. 'Justin Prabhakaran - Topic' -> 'Justin Prabhakaran'
+    """
+    if not artist:
+        return ""
+    cleaned = re.sub(r"\s*-\s*Topic\b", "", artist, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(
+        r"\b(vevo|official channel|records|music|audio|media|entertainment|malayalam|tamil|telugu|hindi|kannada|south|india)\b",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    primary = cleaned.split(",")[0].strip()
+    return re.sub(r"\s+", " ", primary).strip()
+
+
+def generate_search_candidates(title: str, artist: str | None = None) -> list[str]:
+    """
+    Generates ordered, cascading search queries for JioSaavn API matching.
+    """
+    candidates = []
+    clean_title = clean_song_title(title)
+    movie = extract_movie_or_album(title)
+    clean_art = clean_artist_for_search(artist)
+
+    # 1. Clean Title + Movie (Highest precision for film songs: e.g. 'Vellarathaaram Sarvam Maya')
+    if clean_title and movie and movie.lower() != clean_title.lower():
+        candidates.append(f"{clean_title} {movie}")
+
+    # 2. Clean Title + Clean Artist (e.g. 'Vellarathaaram Justin Prabhakaran')
+    if clean_title and clean_art and clean_art.lower() != clean_title.lower():
+        candidates.append(f"{clean_title} {clean_art}")
+
+    # 3. Clean Title alone (e.g. 'Vellarathaaram')
+    if clean_title:
+        candidates.append(clean_title)
+
+    # 4. Multi-part combination from raw title
+    raw_parts = [p.strip() for p in re.split(r"[|•\-:]", title) if p.strip()]
+    if len(raw_parts) >= 2:
+        p0 = clean_song_title(raw_parts[0])
+        p1 = clean_song_title(raw_parts[1])
+        if p0 and p1:
+            candidates.append(f"{p0} {p1}")
+
+    # 5. Cleaned full title
+    if title:
+        candidates.append(re.sub(r"\[.*?\]|\(.*?\)", "", title).strip())
+
+    # Deduplicate while preserving order
+    seen = set()
+    result = []
+    for c in candidates:
+        norm = re.sub(r"\s+", " ", c).strip()
+        if norm and norm.lower() not in seen:
+            seen.add(norm.lower())
+            result.append(norm)
+
+    return result
 
 
 def extract_best_cdn_audio(download_data: Any) -> tuple[str, list[dict[str, str]], str]:
@@ -142,22 +234,36 @@ class CDNStreamService:
         # 2. If title is not passed and direct lookup was empty, resolve title/artist from YTMusic metadata
         if not saavn_song and (not title or len(title.strip()) == 0):
             from app.services.ytmusic_service import ytmusic_service
-            yt_song = await ytmusic_service.get_song_by_id(song_id)
-            if yt_song:
-                title = yt_song.get("name") or yt_song.get("title")
-                artist = yt_song.get("artist") or yt_song.get("subtitle")
+            try:
+                yt_song = await ytmusic_service.get_song_by_id(song_id)
+                if yt_song:
+                    title = yt_song.get("name") or yt_song.get("title")
+                    artist = yt_song.get("artist") or yt_song.get("subtitle")
+            except Exception as e:
+                logger.warning(f"Error resolving YT song for {song_id}: {e}")
 
-        # 3. Match against JioSaavn search using title and artist
+            # If still missing and looks like an 11-char YouTube ID, use YouTube oEmbed directly
+            if (not title or len(title.strip()) == 0) and len(song_id) == 11:
+                def _fetch_oe():
+                    try:
+                        resp = self._session.get(
+                            f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={song_id}&format=json",
+                            timeout=4.0
+                        )
+                        if resp.status_code == 200:
+                            return resp.json()
+                    except Exception:
+                        pass
+                    return None
+
+                oe_data = await asyncio.to_thread(_fetch_oe)
+                if oe_data:
+                    title = oe_data.get("title")
+                    artist = oe_data.get("author_name")
+
+        # 3. Match against JioSaavn search using generated candidates
         if not saavn_song and title:
-            clean_title = clean_song_title(title)
-            clean_artist = (artist or "").split(",")[0].strip()
-
-            queries = [
-                f"{clean_title} {clean_artist}".strip(),
-                clean_title,
-                title,
-            ]
-
+            queries = generate_search_candidates(title, artist)
             for q in queries:
                 if not q:
                     continue
