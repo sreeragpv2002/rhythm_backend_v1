@@ -27,23 +27,12 @@ app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
 @app.get("/health", tags=["Health"], summary="Health check endpoint")
 async def health_check():
-    import os
-
-    from app.services.stream_service import stream_service
-    cookie_path = stream_service.get_cookie_file_path()
-    cookies_count = stream_service.get_cookies_count()
-    pot_status = stream_service.get_pot_provider_status()
-
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "api_version": "v1",
         "port": settings.PORT,
         "is_render": settings.IS_RENDER,
-        "ytdlp_enabled": stream_service.should_run_ytdlp(),
-        "pot_provider": pot_status,
-        "cookies_loaded": bool(cookie_path and os.path.exists(cookie_path) and cookies_count > 0),
-        "cookies_count": cookies_count,
     }
 
 

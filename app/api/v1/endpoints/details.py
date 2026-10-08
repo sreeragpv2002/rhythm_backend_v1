@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.api.v1.endpoints.home import extract_image_url, format_home_item
 from app.models.details import UnifiedDetailsResponse
-from app.services.stream_service import stream_service
 from app.services.ytmusic_service import ytmusic_service
 
 router = APIRouter()
@@ -95,8 +94,6 @@ async def fetch_details(
                 detail=f"Song with ID '{entity_id}' not found on YouTube Music"
             )
         formatted = format_details_response(canonical_type, data)
-        mp3_url = await stream_service.get_audio_stream_url(song_id=entity_id, song_url=data.get("url"))
-        formatted["mp3"] = mp3_url
         return formatted
 
     elif canonical_type == "playlist":

@@ -45,7 +45,6 @@ class TestCIOffline(unittest.TestCase):
             "/api/v1/user-playlists/{playlist_id}",
             "/api/v1/user-playlists/{playlist_id}/songs",
             "/api/v1/user-playlists/{playlist_id}/songs/{song_id}",
-            "/api/v1/test-youtube/{video_id}",
         ]
         for path in expected_paths:
             self.assertIn(path, registered_paths, f"Expected path {path} not in OpenAPI schema")
@@ -114,7 +113,7 @@ class TestCIOffline(unittest.TestCase):
         self.assertTrue(data.get("success"))
         self.assertEqual(len(data.get("data", [])), 6)
 
-    def test_song_details_endpoint_returns_mp3(self):
+    def test_song_details_endpoint(self):
         mock_song_data = {
             "id": "HaU84TfH9nU",
             "name": "Adyam Thammil",
@@ -128,10 +127,8 @@ class TestCIOffline(unittest.TestCase):
                 {"id": "sug1", "name": "Suggested 1", "type": "song", "thumbnails": []}
             ],
         }
-        mock_stream_url = "https://rr1---sn-test.googlevideo.com/videoplayback?expire=999999"
 
-        with patch("app.services.ytmusic_service.ytmusic_service.get_song_details_with_suggestions", return_value=mock_song_data), \
-             patch("app.services.stream_service.stream_service.get_audio_stream_url", return_value=mock_stream_url):
+        with patch("app.services.ytmusic_service.ytmusic_service.get_song_details_with_suggestions", return_value=mock_song_data):
             response = self.client.get("/api/v1/songs/HaU84TfH9nU?limit=50")
             self.assertEqual(response.status_code, 200)
             body = response.json()
@@ -142,11 +139,8 @@ class TestCIOffline(unittest.TestCase):
 
             data = body.get("data", {})
             self.assertEqual(data.get("id"), "HaU84TfH9nU")
-            # Existing song URL must remain unchanged
             self.assertEqual(data.get("url"), "https://music.youtube.com/watch?v=HaU84TfH9nU")
-            # mp3 field must contain the direct stream URL inside data
-            self.assertEqual(data.get("mp3"), mock_stream_url)
-            # Other fields preserved
+            self.assertNotIn("mp3", data, "mp3 stream URL field must not be present in song data")
             self.assertEqual(data.get("name"), "Adyam Thammil")
             self.assertEqual(len(data.get("suggested_songs", [])), 1)
 
@@ -182,65 +176,6 @@ class TestCIOffline(unittest.TestCase):
             add_song_to_playlist("test_user", "pl_test", song_with_mp3)
             call_args = mock_doc_ref.set.call_args[0][0]
             self.assertNotIn("mp3", call_args, "mp3 must not be saved to Firestore in playlists")
-
-    def test_stream_service_format_configuration(self):
-        from app.services.stream_service import StreamService
-        with patch.object(StreamService, "_init_cookie_file"):
-            svc = StreamService()
-            svc._cookie_file_path = None
-            opts = svc._get_ydl_opts()
-            self.assertIn("m4a", opts.get("format", ""))
-            self.assertTrue(opts.get("skip_download"))
-            self.assertTrue(opts.get("noplaylist"))
-            # Default with POT provider enabled attaches youtubepot-bgutilhttp
-            self.assertIn("youtubepot-bgutilhttp", opts.get("extractor_args", {}))
-
-    def test_stream_service_cookie_detection(self):
-        from app.services.stream_service import StreamService
-        # Test inline env var with POT provider disabled
-        with patch.dict(os.environ, {
-            "YOUTUBE_COOKIES": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1800000000\tSID\ttest",
-            "ENABLE_POT_PROVIDER": "false"
-        }):
-            svc = StreamService()
-            self.assertIsNotNone(svc._cookie_file_path)
-            self.assertTrue(os.path.exists(svc._cookie_file_path))
-            opts = svc._get_ydl_opts()
-            self.assertEqual(opts.get("cookiefile"), svc._cookie_file_path)
-            self.assertEqual(opts.get("extractor_args"), {})
-
-    def test_stream_service_environment_routing(self):
-        from app.services.stream_service import StreamService
-        svc = StreamService()
-
-        # 1. Default (local or cloud with PO Token Provider): yt-dlp enabled
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("ENABLE_YTDLP", None)
-            os.environ.pop("ENABLE_SERVER_YTDLP", None)
-            self.assertTrue(svc.should_run_ytdlp())
-
-        # 2. Explicit server disable: yt-dlp disabled
-        with patch.dict(os.environ, {"ENABLE_SERVER_YTDLP": "false"}):
-            self.assertFalse(svc.should_run_ytdlp())
-
-        # 3. Global disable: yt-dlp disabled
-        with patch.dict(os.environ, {"ENABLE_YTDLP": "false"}):
-            self.assertFalse(svc.should_run_ytdlp())
-
-    def test_test_youtube_endpoint(self):
-        with patch("app.api.v1.endpoints.test_youtube._extract_test_info", return_value={
-            "title": "Adyam Thammil",
-            "audio_url": "https://example.com/audio.m4a",
-            "duration": 240,
-            "format": "m4a",
-        }):
-            response = self.client.get("/api/v1/test-youtube/HaU84TfH9nU")
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertTrue(data.get("success"))
-            self.assertEqual(data.get("video_id"), "HaU84TfH9nU")
-            self.assertEqual(data.get("title"), "Adyam Thammil")
-            self.assertEqual(data.get("audio_url"), "https://example.com/audio.m4a")
 
 
 if __name__ == "__main__":

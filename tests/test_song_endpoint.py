@@ -15,12 +15,11 @@ def main():
     print("ID:", body["data"]["id"])
     print("Name:", body["data"]["name"])
     print("Existing URL:", body["data"]["url"])
-    print("Data mp3 starts with https?:", body["data"]["mp3"].startswith("http"))
     print("Suggested songs count:", len(body["data"]["suggested_songs"]))
     assert body["data"]["id"] == "HaU84TfH9nU"
     assert body["data"]["url"] == "https://music.youtube.com/watch?v=HaU84TfH9nU"
-    assert "mp3" not in body, "mp3 should not be duplicated at root level"
-    assert body["data"]["mp3"].startswith("http")
+    assert "mp3" not in body, "mp3 should not be in response root"
+    assert "mp3" not in body["data"], "mp3 should not be in song data"
     print("All live endpoint assertions verified successfully!")
 
 if __name__ == "__main__":

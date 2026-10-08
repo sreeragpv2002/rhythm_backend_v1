@@ -12,12 +12,6 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     IS_RENDER: bool = os.getenv("RENDER", "").lower() in ("true", "1")
 
-    # yt-dlp behavior: enabled on localhost, disabled on cloud datacenter servers unless explicitly overridden
-    ENABLE_YTDLP: bool = os.getenv("ENABLE_YTDLP", "true").lower() not in ("false", "0", "no")
-    ENABLE_SERVER_YTDLP: bool = os.getenv(
-        "ENABLE_SERVER_YTDLP",
-        "false" if os.getenv("RENDER", "").lower() in ("true", "1") else "true"
-    ).lower() in ("true", "1")
 
     # JioSaavn API Configuration
     SAAVN_BASE_URL: str = os.getenv("SAAVN_BASE_URL", "https://saavn.sumit.co")

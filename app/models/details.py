@@ -20,7 +20,6 @@ class SongDetailsData(BaseModel):
     has_lyrics: bool | None = False
     lyrics_id: str | None = None
     url: str | None = None
-    mp3: str | None = Field(default=None, description="Temporary direct audio stream URL for streaming (yt-dlp)")
     copyright: str | None = None
     album: dict[str, Any] | None = None
     artists: dict[str, Any] | None = None
